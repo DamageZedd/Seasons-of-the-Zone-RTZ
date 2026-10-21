@@ -13,7 +13,7 @@ local defaults = {
     ["enable_real_weather"]        = true,
     ["weather_sync_interval"]      = 5,
     ["enable_realtime_rest"]       = true,
-    ["rest_duration"]              = 60,
+    ["rest_duration"]              = 5,
     ["enable_campfire_rest"]       = true,
     ["campfire_rest_rate"]         = 20,
     ["wake_on_danger"]             = true,
@@ -24,6 +24,9 @@ function get_config(key)
     if ui_mcm then
         local v = ui_mcm.get("rtz/" .. key)
         if v ~= nil then
+            if key == "rest_duration" and type(v) == "number" and v > 10 then
+                return defaults[key]
+            end
             return v
         end
     end
@@ -58,7 +61,7 @@ function on_mcm_load()
             { id = "divider_rest", type = "line" },
             { id = "header_rest", type = "desc", text = "ui_mcm_rtz_header_rest", clr = {255, 238, 155, 20} },
             { id = "enable_realtime_rest", type = "check", val = 1, def = defaults["enable_realtime_rest"] },
-            { id = "rest_duration", type = "track", val = 2, min = 30, max = 240, step = 10, def = defaults["rest_duration"] },
+            { id = "rest_duration", type = "track", val = 2, min = 1, max = 10, step = 1, def = defaults["rest_duration"] },
             { id = "enable_campfire_rest", type = "check", val = 1, def = defaults["enable_campfire_rest"] },
             { id = "campfire_rest_rate", type = "track", val = 2, min = 5, max = 50, step = 5, def = defaults["campfire_rest_rate"] },
             { id = "wake_on_danger", type = "check", val = 1, def = defaults["wake_on_danger"] },

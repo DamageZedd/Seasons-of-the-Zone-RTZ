@@ -347,10 +347,11 @@ function update_active_rest()
         last_health = cur_health
     end
 
-    -- Recovery calculation (8000 fatigue recovered over `rest_duration` real seconds)
-    local total_duration = rtz_mcm.get_config("rest_duration") or 60
+    -- Recovery calculation (8000 fatigue recovered over `rest_duration` real minutes, converted to seconds)
+    local cfg_duration = rtz_mcm.get_config("rest_duration") or 5
+    local total_duration = (cfg_duration <= 20) and (cfg_duration * 60) or 300
     local mult = (rest_source == "bed") and 1.3 or ((rest_source == "sleepbag") and 1.15 or 1.0)
-    local recovery_per_sec = (8000 / math.max(20, total_duration)) * mult
+    local recovery_per_sec = (8000 / math.max(60, total_duration)) * mult
 
     current_rest_fatigue = math.max(0, current_rest_fatigue - (recovery_per_sec * dt))
     set_actor_fatigue(current_rest_fatigue)

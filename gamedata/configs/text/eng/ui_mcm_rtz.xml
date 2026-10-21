@@ -77,13 +77,13 @@
 		<text>Enable Real-Time Resting</text>
 	</string>
 	<string id="ui_mcm_rtz_enable_realtime_rest_desc">
-		<text>Replaces instant multi-hour sleep time-skips with real-time resting. The screen fades dark while your fatigue recharges over 1-2 real minutes without breaking the clock sync.</text>
+		<text>Replaces instant multi-hour sleep time-skips with real-time resting. The screen fades dark while your fatigue recharges over a few real minutes without breaking the clock sync.</text>
 	</string>
 	<string id="ui_mcm_rtz_rest_duration">
-		<text>Full Rest Duration (Seconds)</text>
+		<text>Full Rest Duration (Minutes)</text>
 	</string>
 	<string id="ui_mcm_rtz_rest_duration_desc">
-		<text>How many real seconds it takes to recover from complete exhaustion to fully rested at a bed. Default is 60 seconds.</text>
+		<text>How many real minutes it takes to recover from complete exhaustion to fully rested at a bed. Default is 5 minutes (max 10 minutes).</text>
 	</string>
 	<string id="ui_mcm_rtz_enable_campfire_rest">
 		<text>Campfire Passive Rest</text>

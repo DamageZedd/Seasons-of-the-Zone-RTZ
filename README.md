@@ -12,7 +12,7 @@
    - Works out-of-the-box with both **Atmospherics** and **W.P.W.M. (Weighted Probability Weather Manager)**.
 3. **Real-Time Bed & Campfire Resting System**:
    - Replaces multi-hour time-skip sleeping (which would desynchronize the real-time clock) with an atmospheric **Real-Time Rest Screen** (`UIRtzRest`).
-   - Using a bed or sleeping bag fades the screen dark with a live clock, comfort bonus indicator (`+30%` for beds, `+15%` for sleeping bags), and fatigue recovery progress bar—restoring full stamina and sleep deprivation over **60 real seconds** (configurable `30–240s` in MCM).
+   - Using a bed or sleeping bag fades the screen dark with a live clock, comfort bonus indicator (`+30%` for beds, `+15%` for sleeping bags), and fatigue recovery progress bar—restoring full stamina and sleep deprivation over **5 real minutes** (configurable `1–10 mins` in MCM).
    - Press **`SPACE`** or **`ESC`** (or click **Wake Up**) at any time to end your rest early. Automatically wakes you up if attacked or taking damage.
    - **Campfire Passive Rest**: Sitting or idling near any lit campfire passively recharges your fatigue in real time alongside campfire health regeneration.
 4. **Full MCM Menu & Localization**:
@@ -57,7 +57,7 @@ If you also want **hour-by-hour** live weather transitions throughout the day:
 | **Sync Weather with Real Location** | `On` | Drives weather transitions from Open-Meteo for your *Seasons of the Zone* location. |
 | **Weather Check Interval** | `5 min` | How often to check for hourly real-world weather transitions (`1–30 min`). |
 | **Enable Real-Time Resting** | `On` | Replaces multi-hour sleep time-skips with the real-time rest screen. |
-| **Full Rest Duration** | `60 sec` | Real seconds required to recover from 100% exhaustion to 0% at a bed (`30–240 sec`). |
+| **Full Rest Duration** | `5 min` | Real minutes required to recover from 100% exhaustion to 0% at a bed (`1–10 min`). |
 | **Campfire Passive Rest** | `On` | Passively recovers sleep deprivation while sitting near a lit campfire. |
 | **Campfire Rest Speed** | `20 / sec` | Fatigue recovery rate near lit campfires (`5–50 / sec`). |
 | **Interrupt Rest on Danger / Damage** | `On` | Instantly wakes the player if taking damage or bleeding. |
