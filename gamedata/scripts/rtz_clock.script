@@ -1,0 +1,229 @@
+-- =======================================================================================
+-- Real Time Zone (RTZ) - Clock & Time Synchronization Module
+-- Addon for Seasons of the Zone by Denis_Zedd
+-- =======================================================================================
+
+local last_drift_check = 0
+local DRIFT_CHECK_MS = 20000 -- Check drift every 20s
+local is_synced = false
+
+local function printf_rtz(fmt, ...)
+    printf("[RTZ Clock] " .. fmt, ...)
+end
+
+--- Snapshots actor vitals prior to a large clock sync jump
+local function snapshot_vitals()
+    local snap = {}
+    pcall(function()
+        if db.actor then
+            snap.satiety = db.actor.satiety
+            snap.health = db.actor.health
+            snap.power = db.actor.power
+            snap.bleeding = db.actor.bleeding
+        end
+        if actor_status_sleep and actor_status_sleep.get_last_sleep then
+            snap.sleep = actor_status_sleep.get_last_sleep()
+        end
+        if actor_status_thirst and actor_status_thirst.get_last_drink then
+            snap.drink = actor_status_thirst.get_last_drink()
+        end
+    end)
+    return snap
+end
+
+--- Restores player vitals and resets surge/deprivation timers AFTER level.change_game_time
+local function apply_post_jump_safeguards(diff_sec, snap)
+    printf_rtz("Applying post-jump safeguards for clock forward sync of %d seconds...", diff_sec)
+
+    -- 1. Notify surge & psi-storm managers that time was forwarded so they reschedule cleanly
+    pcall(function()
+        local now_gt = game.get_game_time()
+        if surge_manager and surge_manager.get_surge_manager then
+            local sm = surge_manager.get_surge_manager()
+            if sm then
+                sm.time_forwarded = true
+                sm.last_surge_time = now_gt
+                if sm.started then
+                    sm.started = false
+                    sm.finished = true
+                end
+            end
+        end
+        if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
+            local pm = psi_storm_manager.get_psi_storm_manager()
+            if pm then
+                pm.time_forwarded = true
+                pm.last_psi_storm_time = now_gt
+                if pm.started then
+                    pm.started = false
+                    pm.finished = true
+                end
+            end
+        end
+    end)
+
+    -- 2. Restore vitals and sync deprivation timestamps so real-time clock sync never starves/kills the player
+    if rtz_mcm.get_config("safeguard_vitals") and snap then
+        pcall(function()
+            local chk = (utils_data and utils_data.CTime_to_table and game.get_game_time)
+                and utils_data.CTime_to_table(game.get_game_time()) or nil
+
+            -- Sleep Deprivation: preserve pre-jump fatigue (clamped below blackout) and update chk_sleep timestamp
+            if actor_status_sleep and actor_status_sleep.load_state then
+                local safe_slp = math.min(snap.sleep or 0, 5500)
+                actor_status_sleep.load_state({
+                    sleep = {
+                        last_sleep = safe_slp,
+                        chk_sleep = chk,
+                    }
+                })
+                if actor_status_sleep.test_blur then
+                    actor_status_sleep.test_blur()
+                end
+            end
+
+            -- Water Deprivation: preserve pre-jump thirst (clamped below critical) and update chk_drink timestamp
+            if actor_status_thirst and actor_status_thirst.load_state then
+                local safe_drk = math.min(snap.drink or 0, 4500)
+                actor_status_thirst.load_state({
+                    drink = {
+                        last_drink = safe_drk,
+                        chk_drink = chk,
+                    }
+                })
+                if actor_status_thirst.test_blur then
+                    actor_status_thirst.test_blur()
+                end
+            end
+
+            -- Restore C++ engine actor conditions (satiety/hunger, health, power)
+            if db.actor then
+                if snap.satiety and db.actor.satiety then
+                    db.actor.satiety = math.max(snap.satiety, 0.5)
+                end
+                if snap.health and db.actor.health and db.actor.health < snap.health then
+                    db.actor.health = snap.health
+                end
+                if db.actor.power then
+                    db.actor.power = snap.power or 1.0
+                end
+                if db.actor.bleeding and db.actor.bleeding > 0.05 then
+                    db.actor.bleeding = 0.0
+                end
+            end
+        end)
+    end
+end
+
+--- Computes forward difference in seconds (0..86399), returning 0 if already within the same minute window
+local function get_clock_diff_seconds()
+    local real = os.date("*t")
+    if not real then return 0, nil end
+
+    local real_sec = real.hour * 3600 + real.min * 60 + real.sec
+    local game_h   = level.get_time_hours()
+    local game_m   = level.get_time_minutes()
+    local game_s   = level.get_time_seconds()
+    local game_sec = game_h * 3600 + game_m * 60 + game_s
+
+    -- Signed shortest distance on the 24h circle (-43200 .. +43200)
+    local signed_diff = (real_sec - game_sec) % 86400
+    if signed_diff > 43200 then
+        signed_diff = signed_diff - 86400
+    end
+
+    -- Because level.change_game_time only takes whole minutes (hours, mins) and cannot adjust seconds,
+    -- if the clock is within [-90s, +60s] of real time, it is already synced to the current minute!
+    if signed_diff >= -90 and signed_diff < 60 then
+        return 0, real
+    end
+
+    local forward_diff = (real_sec - game_sec) % 86400
+    return forward_diff, real
+end
+
+--- Synchronizes the in-game clock directly with real OS wall clock
+function sync_to_real_time(force)
+    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("sync_clock") then
+        return
+    end
+
+    local diff_sec, real = get_clock_diff_seconds()
+    if not real or diff_sec < 60 then
+        is_synced = true
+        return
+    end
+
+    local game_h = level.get_time_hours()
+    local game_m = level.get_time_minutes()
+    local game_s = level.get_time_seconds()
+
+    -- Calculate exact whole hours & minutes to land on real.hour : real.min
+    local total_mins = (real.hour * 60 + real.min) - (game_h * 60 + game_m)
+    if total_mins <= 0 then
+        total_mins = total_mins + 1440
+    end
+    local hours = math.floor(total_mins / 60)
+    local mins  = total_mins % 60
+
+    local snap = nil
+    if total_mins >= 2 then
+        snap = snapshot_vitals()
+    end
+
+    if level and level.change_game_time then
+        level.change_game_time(0, hours, mins)
+        if total_mins >= 2 then
+            apply_post_jump_safeguards(total_mins * 60, snap)
+        end
+
+        printf_rtz("In-game clock synchronized: was %02d:%02d:%02d -> now %02d:%02d (+%d hrs, +%d mins)",
+            game_h, game_m, game_s, real.hour, real.min, hours, mins)
+
+        if actor_menu and actor_menu.set_msg then
+            local time_str = string.format("%02d:%02d", real.hour, real.min)
+            actor_menu.set_msg(1, string.format(game.translate_string("st_rtz_clock_synced"), time_str), 4)
+        end
+    end
+
+    is_synced = true
+end
+
+--- Enforces target time factor (1.0 default)
+function enforce_time_factor()
+    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("lock_time_factor") then
+        return
+    end
+
+    -- Do not override during active surge/psi-storm FX
+    if level.is_wfx_playing and level.is_wfx_playing() then return end
+    if surge_manager and surge_manager.is_started and surge_manager.is_started() then return end
+    if psi_storm_manager and psi_storm_manager.is_started and psi_storm_manager.is_started() then return end
+
+    local target_tf = rtz_mcm.get_config("time_factor_val") or 1.0
+    local cur_tf = level.get_time_factor()
+    if math.abs(cur_tf - target_tf) > 0.05 then
+        level.set_time_factor(target_tf)
+    end
+end
+
+function init()
+    enforce_time_factor()
+    sync_to_real_time(true)
+end
+
+function update()
+    local tg = time_global()
+    enforce_time_factor()
+
+    if tg > last_drift_check + DRIFT_CHECK_MS then
+        last_drift_check = tg
+        -- Drift check: verify if loading pauses or menu pauses caused a 1-5 minute lag behind real time
+        if rtz_mcm.get_config("enabled") and rtz_mcm.get_config("sync_clock") then
+            local diff_sec = get_clock_diff_seconds()
+            if diff_sec >= 90 and diff_sec < 600 then
+                level.change_game_time(0, 0, math.floor(diff_sec / 60))
+            end
+        end
+    end
+end

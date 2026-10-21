@@ -1,0 +1,56 @@
+<w>
+	<!-- Fullscreen dark backdrop -->
+	<background x="0" y="0" width="1024" height="768">
+		<auto_static x="0" y="0" width="1024" height="768" stretch="1">
+			<texture r="5" g="5" b="8" a="240">ui_inGame2_inventory_status_bar</texture>
+		</auto_static>
+	</background>
+
+	<!-- Centered Rest Window -->
+	<center_panel x="280" y="240" width="464" height="288">
+		<frame x="0" y="0" width="464" height="288" stretch="1">
+			<texture>ui_inGame2_hint_wnd_main_window</texture>
+		</frame>
+
+		<!-- Title -->
+		<title x="20" y="24" width="424" height="30">
+			<text r="238" g="155" b="20" align="c" vert_align="c" font="graffiti22"/>
+		</title>
+
+		<!-- Clock / Real-Time Display -->
+		<time_text x="20" y="66" width="424" height="24">
+			<text r="190" g="190" b="190" align="c" vert_align="c" font="letterica18"/>
+		</time_text>
+
+		<!-- Status / Fatigue Text -->
+		<status_text x="20" y="98" width="424" height="24">
+			<text r="220" g="220" b="220" align="c" vert_align="c" font="letterica18"/>
+		</status_text>
+
+		<!-- Comfort Bonus Label -->
+		<comfort_text x="20" y="128" width="424" height="20">
+			<text r="100" g="200" b="120" align="c" vert_align="c" font="letterica16"/>
+		</comfort_text>
+
+		<!-- Progress Bar Background & Fill -->
+		<progress_back x="52" y="160" width="360" height="18" stretch="1">
+			<texture r="35" g="35" b="40">ui_inGame2_inventory_status_bar</texture>
+		</progress_back>
+		<progress_bar x="52" y="160" width="360" height="18" horz="1" min="0" max="100" pos="0" stretch="1">
+			<progress stretch="1">
+				<texture r="100" g="200" b="120">ui_inGame2_inventory_status_bar</texture>
+			</progress>
+		</progress_bar>
+
+		<!-- Wake Up Button -->
+		<btn_wake x="142" y="196" width="180" height="36" check_mode="0" stretch="1">
+			<texture>ui_button_ordinary</texture>
+			<text r="240" g="240" b="240" align="c" vert_align="c" font="letterica18">st_rtz_btn_wake</text>
+		</btn_wake>
+
+		<!-- Key Hint -->
+		<hint_text x="20" y="244" width="424" height="20">
+			<text r="140" g="140" b="140" align="c" vert_align="c" font="letterica16"/>
+		</hint_text>
+	</center_panel>
+</w>

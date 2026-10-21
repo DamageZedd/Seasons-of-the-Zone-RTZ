@@ -1,0 +1,68 @@
+-- =======================================================================================
+-- Real Time Zone (RTZ) - Main Orchestrator
+-- Addon for Seasons of the Zone by Denis_Zedd
+-- =======================================================================================
+
+local initialized = false
+
+local function printf_rtz(fmt, ...)
+    printf("[RTZ Main] " .. fmt, ...)
+end
+
+function actor_on_first_update()
+    if not rtz_mcm.get_config("enabled") then
+        printf_rtz("Real Time Zone is disabled in MCM.")
+        return
+    end
+
+    printf_rtz("Initializing Real Time Zone (RTZ) v1.0.0...")
+
+    if rtz_clock and rtz_clock.init then
+        rtz_clock.init()
+    end
+    if rtz_weather and rtz_weather.init then
+        rtz_weather.init()
+    end
+    if rtz_rest and rtz_rest.init then
+        rtz_rest.init()
+    end
+
+    initialized = true
+    printf_rtz("Initialization complete.")
+end
+
+function actor_on_update()
+    if not initialized then return end
+
+    if rtz_clock and rtz_clock.update then
+        rtz_clock.update()
+    end
+    if rtz_weather and rtz_weather.update then
+        rtz_weather.update()
+    end
+    if rtz_rest and rtz_rest.update then
+        rtz_rest.update()
+    end
+end
+
+function save_state(m_data)
+    if not m_data then return end
+    m_data.rtz = m_data.rtz or {}
+    m_data.rtz.saved_at = os.time()
+end
+
+function load_state(m_data)
+    if not m_data or not m_data.rtz then return end
+    local last_time = m_data.rtz.saved_at
+    if last_time then
+        local elapsed = os.time() - last_time
+        printf_rtz("Session loaded. Real elapsed time since save: %d seconds.", elapsed)
+    end
+end
+
+function on_game_start()
+    RegisterScriptCallback("actor_on_first_update", actor_on_first_update)
+    RegisterScriptCallback("actor_on_update", actor_on_update)
+    RegisterScriptCallback("save_state", save_state)
+    RegisterScriptCallback("load_state", load_state)
+end
