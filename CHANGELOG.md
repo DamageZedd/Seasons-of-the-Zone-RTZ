@@ -6,7 +6,8 @@
 - **1:1 Real-Time Clock Synchronization (`rtz_clock.script`)**:
   - Enforces a 1:1 real-time `time_factor` (`1.0` default, configurable `1.0–10.0` in MCM).
   - Synchronizes the in-game clock (`HH:MM`) with the host OS wall clock on game load and level transition, with circular sub-minute wrap protection.
-  - Added post-jump vitals and surge/psi-storm safeguards so syncing the clock after hours offline never causes starvation, dehydration, exhaustion blackouts, or immediate overdue emissions.
+  - Strictly guards Hunger (`satiety`), Thirst (`actor_status_thirst`), Sleep (`actor_status_sleep`), Health, Stamina, Bleeding, and Surge/Psi-Storm timers on all clock sync jumps and rest wake-ups so player vitals are left 100% untouched.
+  - **Vanilla Time-Scale Preservation (`vanilla_vitals_alife_scale`)**: Ensures Hunger (`satiety_v`), Thirst (`drink_chk`), Sleep (`sleep_chk`), A-Life squad stay/idle timers (`sim_squad_scripted`), offline squad travel speed (`mod_system_rtz_alife.ltx`), Smart Terrain respawns (`smart_terrain` & ZCP `smr_pop`), and Emission/Psi-Storm intervals continue to progress at the exact same real-world pace as vanilla Anomaly (`time_factor = 6.0`) while the world clock runs at 1:1 real time.
 - **Live Real-World Weather Engine (`rtz_weather.script`, `_tools/fetch_rtz_hourly.py`, `setup_rtz.bat`)**:
   - Reads hour-by-hour Open-Meteo weather forecasts (`rtz_weather.ltx`) and *Seasons of the Zone*'s `season_weather.ltx` (with built-in diurnal fallback) to drive in-game weather cycles (`clear`, `partly`, `cloudy`, `foggy`, `rain`, `storm`, `snow`).
   - Syncs `WeatherManager.day_plan` so *Seasons of the Zone*'s in-game PDA Forecast tab displays the real-world schedule.

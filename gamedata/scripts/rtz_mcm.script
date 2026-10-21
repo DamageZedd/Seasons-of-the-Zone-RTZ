@@ -4,19 +4,20 @@
 -- =======================================================================================
 
 local defaults = {
-    ["enabled"]                  = true,
-    ["sync_clock"]               = true,
-    ["lock_time_factor"]         = true,
-    ["time_factor_val"]          = 1.0,
-    ["safeguard_vitals"]         = true,
-    ["enable_real_weather"]      = true,
-    ["weather_sync_interval"]    = 5,
-    ["enable_realtime_rest"]     = true,
-    ["rest_duration"]            = 60,
-    ["enable_campfire_rest"]     = true,
-    ["campfire_rest_rate"]       = 20,
-    ["wake_on_danger"]           = true,
-    ["autosave_on_rest"]         = true,
+    ["enabled"]                    = true,
+    ["sync_clock"]                 = true,
+    ["lock_time_factor"]           = true,
+    ["time_factor_val"]            = 1.0,
+    ["safeguard_vitals"]           = true,
+    ["vanilla_vitals_alife_scale"] = true,
+    ["enable_real_weather"]        = true,
+    ["weather_sync_interval"]      = 5,
+    ["enable_realtime_rest"]       = true,
+    ["rest_duration"]              = 60,
+    ["enable_campfire_rest"]       = true,
+    ["campfire_rest_rate"]         = 20,
+    ["wake_on_danger"]             = true,
+    ["autosave_on_rest"]           = true,
 }
 
 function get_config(key)
@@ -45,6 +46,7 @@ function on_mcm_load()
             { id = "lock_time_factor", type = "check", val = 1, def = defaults["lock_time_factor"] },
             { id = "time_factor_val", type = "track", val = 2, min = 1.0, max = 10.0, step = 0.5, def = defaults["time_factor_val"] },
             { id = "safeguard_vitals", type = "check", val = 1, def = defaults["safeguard_vitals"] },
+            { id = "vanilla_vitals_alife_scale", type = "check", val = 1, def = defaults["vanilla_vitals_alife_scale"] },
 
             -- 2. Live Real-World Weather
             { id = "divider_weather", type = "line" },

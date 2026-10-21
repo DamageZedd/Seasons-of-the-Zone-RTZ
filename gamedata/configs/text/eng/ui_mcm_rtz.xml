@@ -43,7 +43,13 @@
 		<text>Safeguard Vitals on Time Jump</text>
 	</string>
 	<string id="ui_mcm_rtz_safeguard_vitals_desc">
-		<text>When a save is loaded hours after your last session, prevents massive sleep deprivation, thirst, and hunger spikes from instantly killing you upon synchronization.</text>
+		<text>Strictly guards hunger, thirst, sleep, health, and emission timers whenever the in-game clock synchronizes with real time so vitals are left 100% untouched by clock jumps.</text>
+	</string>
+	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale">
+		<text>Preserve Vanilla Vitals &amp; A-Life Pacing (6x)</text>
+	</string>
+	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale_desc">
+		<text>Ensures Hunger, Thirst, Sleep, A-Life squad movement/idle timers, Smart Terrain respawns (Vanilla &amp; ZCP), and Emission intervals continue to progress at the exact same real-world rate as vanilla Anomaly (time factor 6.0) even while the world clock runs at 1:1 real time.</text>
 	</string>
 
 	<!-- Weather Settings -->

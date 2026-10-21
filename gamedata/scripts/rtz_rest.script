@@ -301,8 +301,28 @@ function stop_resting(interrupted)
         end
     end
 
-    -- Signal completion with 0 hours so thirst/hunger do not spike
+    -- Signal completion with 0 hours while strictly guarding hunger & thirst from any third-party actor_on_sleep callbacks
+    local snap_sat = db.actor and db.actor.satiety or nil
+    local snap_drk = (actor_status_thirst and actor_status_thirst.get_last_drink and actor_status_thirst.get_last_drink()) or nil
+
     SendScriptCallback("actor_on_sleep", 0)
+
+    pcall(function()
+        if db.actor and snap_sat ~= nil and db.actor.satiety ~= nil then
+            db.actor.satiety = snap_sat
+        end
+        if actor_status_thirst and snap_drk ~= nil and actor_status_thirst.load_state then
+            local chk = (utils_data and utils_data.CTime_to_table and game.get_game_time)
+                and utils_data.CTime_to_table(game.get_game_time()) or nil
+            actor_status_thirst.load_state({
+                drink = {
+                    last_drink = snap_drk,
+                    chk_drink = chk,
+                }
+            })
+        end
+    end)
+
     printf_rtz("Finished rest, interrupted: %s", tostring(interrupted))
 end
 

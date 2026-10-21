@@ -1,14 +1,52 @@
 -- =======================================================================================
--- Real Time Zone (RTZ) - Clock & Time Synchronization Module
+-- Real Time Zone (RTZ) - Clock, Vitals Guard & Vanilla Pacing Module
 -- Addon for Seasons of the Zone by Denis_Zedd
 -- =======================================================================================
 
+local VANILLA_TIME_FACTOR = 6.0
+
 local last_drift_check = 0
 local DRIFT_CHECK_MS = 20000 -- Check drift every 20s
+
+local last_vitals_tick = 0
+local VITALS_TICK_MS = 1000 -- Compensate C++ hunger every 1s
+
 local is_synced = false
+local alife_hooks_installed = false
+
+local base_drink_chk = nil
+local base_sleep_chk = nil
+local cached_satiety_v = nil
 
 local function printf_rtz(fmt, ...)
     printf("[RTZ Clock] " .. fmt, ...)
+end
+
+--- Helper to read a local upvalue by name from a function
+local function get_upvalue_by_name(fn, target_name)
+    if type(fn) ~= "function" or not debug or not debug.getupvalue then
+        return nil, nil
+    end
+    local i = 1
+    while true do
+        local name, val = debug.getupvalue(fn, i)
+        if not name then break end
+        if name == target_name then
+            return val, i
+        end
+        i = i + 1
+    end
+    return nil, nil
+end
+
+--- Helper to set a local upvalue by name on a function
+local function set_upvalue_by_name(fn, target_name, new_val)
+    local _, idx = get_upvalue_by_name(fn, target_name)
+    if idx and debug and debug.setupvalue then
+        debug.setupvalue(fn, idx, new_val)
+        return true
+    end
+    return false
 end
 
 --- Safely retrieves in-game (hours, minutes, seconds) using level and CTime:get()
@@ -27,109 +65,370 @@ local function get_game_hms()
     return h, m, s
 end
 
---- Snapshots actor vitals prior to a large clock sync jump
-local function snapshot_vitals()
+--- Returns the current ratio (cur_tf / 6.0) when vanilla scale preservation is active, or 1.0 otherwise
+function get_vanilla_scale_ratio()
+    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("vanilla_vitals_alife_scale") then
+        return 1.0
+    end
+    local cur_tf = (level and level.get_time_factor and level.get_time_factor())
+        or rtz_mcm.get_config("time_factor_val")
+        or 1.0
+    return math.max(0.05, cur_tf / VANILLA_TIME_FACTOR)
+end
+
+--- Snapshots exact actor vitals and timer offsets prior to ANY level.change_game_time call
+function snapshot_vitals()
     local snap = {}
     pcall(function()
+        local now_gt = game and game.get_game_time and game.get_game_time() or nil
         if db.actor then
             snap.satiety = db.actor.satiety
             snap.health = db.actor.health
             snap.power = db.actor.power
             snap.bleeding = db.actor.bleeding
         end
-        if actor_status_sleep and actor_status_sleep.get_last_sleep then
-            snap.sleep = actor_status_sleep.get_last_sleep()
+        if actor_status_sleep then
+            if actor_status_sleep.get_last_sleep then
+                snap.sleep = actor_status_sleep.get_last_sleep()
+            end
+            if now_gt and actor_status_sleep.actor_on_update then
+                local last_chk = get_upvalue_by_name(actor_status_sleep.actor_on_update, "last_sleep_chk")
+                if last_chk and now_gt.diffSec then
+                    snap.sleep_elapsed = math.max(0, math.floor(now_gt:diffSec(last_chk)))
+                end
+            end
         end
-        if actor_status_thirst and actor_status_thirst.get_last_drink then
-            snap.drink = actor_status_thirst.get_last_drink()
+        if actor_status_thirst then
+            if actor_status_thirst.get_last_drink then
+                snap.drink = actor_status_thirst.get_last_drink()
+            end
+            if now_gt and actor_status_thirst.actor_on_update then
+                local last_chk = get_upvalue_by_name(actor_status_thirst.actor_on_update, "last_drink_chk")
+                if last_chk and now_gt.diffSec then
+                    snap.drink_elapsed = math.max(0, math.floor(now_gt:diffSec(last_chk)))
+                end
+            end
+        end
+        if surge_manager and surge_manager.get_surge_manager then
+            local sm = surge_manager.get_surge_manager()
+            if sm and sm.last_surge_time and now_gt then
+                snap.surge_elapsed = math.max(0, math.floor(now_gt:diffSec(sm.last_surge_time)))
+            end
+        end
+        if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
+            local pm = psi_storm_manager.get_psi_storm_manager()
+            if pm and pm.last_psi_storm_time and now_gt then
+                snap.psi_elapsed = math.max(0, math.floor(now_gt:diffSec(pm.last_psi_storm_time)))
+            end
         end
     end)
     return snap
 end
 
---- Restores player vitals and resets surge/deprivation timers AFTER level.change_game_time
-local function apply_post_jump_safeguards(diff_sec, snap)
-    printf_rtz("Applying post-jump safeguards for clock forward sync of %d seconds...", diff_sec)
+--- Helper to create a CTime offset backwards by `elapsed_sec` from current `game.get_game_time()`
+local function make_offset_ctime(now_gt, elapsed_sec)
+    if not now_gt or not elapsed_sec or elapsed_sec <= 0 then
+        return now_gt
+    end
+    local ok, res = pcall(function()
+        local Y, M, D, h, m, s, ms = 0, 0, 0, 0, 0, 0, 0
+        Y, M, D, h, m, s, ms = now_gt:get(Y, M, D, h, m, s, ms)
+        local t = game.CTime()
+        t:set(Y, M, D, h, m, s, ms)
+        local sub = game.CTime()
+        local eh = math.floor(elapsed_sec / 3600)
+        local em = math.floor((elapsed_sec % 3600) / 60)
+        local es = elapsed_sec % 60
+        sub:setHMS(eh, em, es)
+        t:sub(sub)
+        return t
+    end)
+    return (ok and res) or now_gt
+end
 
-    -- 1. Notify surge & psi-storm managers that time was forwarded so they reschedule cleanly
+--- Restores exact pre-jump player vitals and shifts timestamps so clock sync leaves hunger/thirst/sleep 100% untouched
+function restore_vitals_exact(snap)
+    if not snap then return end
     pcall(function()
-        local now_gt = game.get_game_time()
-        if surge_manager and surge_manager.get_surge_manager then
+        local now_gt = game and game.get_game_time and game.get_game_time() or nil
+
+        -- 1. Preserve Surge & Psi-Storm elapsed progress across clock sync
+        if now_gt and surge_manager and surge_manager.get_surge_manager then
             local sm = surge_manager.get_surge_manager()
             if sm then
-                sm.time_forwarded = true
-                sm.last_surge_time = now_gt
+                sm.last_surge_time = make_offset_ctime(now_gt, snap.surge_elapsed or 0)
                 if sm.started then
                     sm.started = false
                     sm.finished = true
                 end
             end
         end
-        if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
+        if now_gt and psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
             local pm = psi_storm_manager.get_psi_storm_manager()
             if pm then
-                pm.time_forwarded = true
-                pm.last_psi_storm_time = now_gt
+                pm.last_psi_storm_time = make_offset_ctime(now_gt, snap.psi_elapsed or 0)
                 if pm.started then
                     pm.started = false
                     pm.finished = true
                 end
             end
         end
-    end)
 
-    -- 2. Restore vitals and sync deprivation timestamps so real-time clock sync never starves/kills the player
-    if rtz_mcm.get_config("safeguard_vitals") and snap then
-        pcall(function()
-            local chk = (utils_data and utils_data.CTime_to_table and game.get_game_time)
-                and utils_data.CTime_to_table(game.get_game_time()) or nil
+        if not rtz_mcm.get_config("safeguard_vitals") then
+            return
+        end
 
-            -- Sleep Deprivation: preserve pre-jump fatigue (clamped below blackout) and update chk_sleep timestamp
-            if actor_status_sleep and actor_status_sleep.load_state then
-                local safe_slp = math.min(snap.sleep or 0, 5500)
+        -- 2. Restore exact Sleep Deprivation & shift chk_sleep timestamp
+        if actor_status_sleep and snap.sleep ~= nil then
+            local new_sleep_chk = make_offset_ctime(now_gt, snap.sleep_elapsed or 0)
+            local chk_tbl = (utils_data and utils_data.CTime_to_table and new_sleep_chk)
+                and utils_data.CTime_to_table(new_sleep_chk) or nil
+            if actor_status_sleep.load_state then
                 actor_status_sleep.load_state({
                     sleep = {
-                        last_sleep = safe_slp,
-                        chk_sleep = chk,
+                        last_sleep = snap.sleep,
+                        chk_sleep = chk_tbl,
                     }
                 })
-                if actor_status_sleep.test_blur then
-                    actor_status_sleep.test_blur()
+            end
+            if alife_storage_manager and alife_storage_manager.get_state then
+                local st = alife_storage_manager.get_state()
+                if st and st.sleep then
+                    st.sleep.last_sleep = snap.sleep
+                    st.sleep.chk_sleep = chk_tbl
                 end
             end
+            if actor_status_sleep.test_blur then
+                actor_status_sleep.test_blur()
+            end
+        end
 
-            -- Water Deprivation: preserve pre-jump thirst (clamped below critical) and update chk_drink timestamp
-            if actor_status_thirst and actor_status_thirst.load_state then
-                local safe_drk = math.min(snap.drink or 0, 4500)
+        -- 3. Restore exact Thirst Deprivation & shift chk_drink timestamp
+        if actor_status_thirst and snap.drink ~= nil then
+            local new_drink_chk = make_offset_ctime(now_gt, snap.drink_elapsed or 0)
+            local chk_tbl = (utils_data and utils_data.CTime_to_table and new_drink_chk)
+                and utils_data.CTime_to_table(new_drink_chk) or nil
+            if actor_status_thirst.load_state then
                 actor_status_thirst.load_state({
                     drink = {
-                        last_drink = safe_drk,
-                        chk_drink = chk,
+                        last_drink = snap.drink,
+                        chk_drink = chk_tbl,
                     }
                 })
-                if actor_status_thirst.test_blur then
-                    actor_status_thirst.test_blur()
+            end
+            if alife_storage_manager and alife_storage_manager.get_state then
+                local st = alife_storage_manager.get_state()
+                if st and st.drink then
+                    st.drink.last_drink = snap.drink
+                    st.drink.chk_drink = chk_tbl
                 end
             end
+            if actor_status_thirst.test_blur then
+                actor_status_thirst.test_blur()
+            end
+        end
 
-            -- Restore C++ engine actor conditions (satiety/hunger, health, power)
-            if db.actor then
-                if snap.satiety and db.actor.satiety then
-                    db.actor.satiety = math.max(snap.satiety, 0.5)
-                end
-                if snap.health and db.actor.health and db.actor.health < snap.health then
-                    db.actor.health = snap.health
-                end
-                if db.actor.power then
-                    db.actor.power = snap.power or 1.0
-                end
-                if db.actor.bleeding and db.actor.bleeding > 0.05 then
-                    db.actor.bleeding = 0.0
-                end
+        -- 4. Restore exact C++ engine actor conditions (satiety/hunger, health, power, bleeding)
+        if db.actor then
+            if snap.satiety ~= nil and db.actor.satiety ~= nil then
+                db.actor.satiety = snap.satiety
             end
-        end)
+            if snap.health ~= nil and db.actor.health ~= nil then
+                db.actor.health = snap.health
+            end
+            if snap.power ~= nil and db.actor.power ~= nil then
+                db.actor.power = snap.power
+            end
+            if snap.bleeding ~= nil and db.actor.bleeding ~= nil then
+                db.actor.bleeding = snap.bleeding
+            end
+        end
+    end)
+end
+
+--- Wrapper around level.change_game_time that strictly guards hunger, thirst, sleep, and emission timers
+function change_game_time_guarded(days, hours, mins)
+    if not level or not level.change_game_time then return end
+    local snap = snapshot_vitals()
+    level.change_game_time(days or 0, hours or 0, mins or 0)
+    restore_vitals_exact(snap)
+end
+
+-- =======================================================================================
+-- Vanilla Time-Scale Preservation for Hunger, Thirst, Sleep & A-Life
+-- =======================================================================================
+
+--- Syncs Thirst and Sleep check intervals so they drain at the exact vanilla 6.0x real-time rate
+local function sync_thirst_and_sleep_intervals()
+    pcall(function()
+        local ratio = get_vanilla_scale_ratio()
+
+        if actor_status_thirst and actor_status_thirst.actor_on_update then
+            if not base_drink_chk then
+                base_drink_chk = get_upvalue_by_name(actor_status_thirst.actor_on_update, "drink_chk") or 300
+            end
+            local target_drink_chk = math.max(10, math.floor(base_drink_chk * ratio + 0.5))
+            set_upvalue_by_name(actor_status_thirst.actor_on_update, "drink_chk", target_drink_chk)
+        end
+
+        if actor_status_sleep and actor_status_sleep.actor_on_update then
+            if not base_sleep_chk then
+                base_sleep_chk = get_upvalue_by_name(actor_status_sleep.actor_on_update, "sleep_chk") or 300
+            end
+            local target_sleep_chk = math.max(10, math.floor(base_sleep_chk * ratio + 0.5))
+            set_upvalue_by_name(actor_status_sleep.actor_on_update, "sleep_chk", target_sleep_chk)
+        end
+    end)
+end
+
+--- Compensates C++ engine hunger drain (`satiety_v`) so hunger drains at vanilla 6.0x real-time speed
+local function update_vanilla_hunger_drain(tg)
+    if last_vitals_tick == 0 then
+        last_vitals_tick = tg
+        return
+    end
+    if tg < last_vitals_tick + VITALS_TICK_MS then
+        return
+    end
+
+    local dt_real = math.min(5.0, (tg - last_vitals_tick) / 1000.0)
+    last_vitals_tick = tg
+
+    -- Sync Thirst & Sleep check upvalues and Surge/Psi-Storm deltas
+    sync_thirst_and_sleep_intervals()
+
+    pcall(function()
+        local ratio = get_vanilla_scale_ratio()
+        if surge_manager and surge_manager.get_surge_manager then
+            local sm = surge_manager.get_surge_manager()
+            if sm and sm._delta then
+                if not sm.__rtz_base_delta or math.abs(sm._delta - (sm.__rtz_last_scaled_delta or sm._delta)) > 10 then
+                    sm.__rtz_base_delta = sm._delta
+                end
+                sm.__rtz_last_scaled_delta = math.max(600, math.floor(sm.__rtz_base_delta * ratio + 0.5))
+                sm._delta = sm.__rtz_last_scaled_delta
+            end
+        end
+        if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
+            local pm = psi_storm_manager.get_psi_storm_manager()
+            if pm and pm._delta then
+                if not pm.__rtz_base_delta or math.abs(pm._delta - (pm.__rtz_last_scaled_delta or pm._delta)) > 10 then
+                    pm.__rtz_base_delta = pm._delta
+                end
+                pm.__rtz_last_scaled_delta = math.max(600, math.floor(pm.__rtz_base_delta * ratio + 0.5))
+                pm._delta = pm.__rtz_last_scaled_delta
+            end
+        end
+    end)
+
+    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("vanilla_vitals_alife_scale") then
+        return
+    end
+    if not db.actor or not db.actor:alive() then
+        return
+    end
+    -- Do not drain extra hunger in God Mode or while inside RTZ Rest screen
+    if get_console_cmd and get_console_cmd(1, "g_god") then
+        return
+    end
+    if rtz_rest and rtz_rest.is_resting then
+        return
+    end
+
+    pcall(function()
+        local cur_tf = (level and level.get_time_factor and level.get_time_factor()) or 1.0
+        local missing_tf = VANILLA_TIME_FACTOR - cur_tf
+        if missing_tf <= 0.05 then
+            return
+        end
+
+        if not cached_satiety_v then
+            cached_satiety_v = (ini_sys and ini_sys:r_float_ex("actor_condition", "satiety_v")) or 0.00002
+        end
+
+        local sat_factor = 1.0
+        if game_difficulties and game_difficulties.get_game_factor then
+            local f = game_difficulties.get_game_factor("satiety")
+            if type(f) == "number" then
+                sat_factor = f
+            elseif f == false then
+                sat_factor = 0.0
+            end
+        end
+
+        if sat_factor > 0 and db.actor.change_satiety then
+            local delta_sat = -cached_satiety_v * sat_factor * missing_tf * dt_real
+            db.actor:change_satiety(delta_sat)
+        end
+    end)
+end
+
+--- Scales A-Life squad stay/idle timers to match vanilla 6.0x real-time pacing
+local function on_squad_update(squad)
+    if not squad or not squad.idle_time then return end
+    if not squad.__rtz_base_idle then
+        squad.__rtz_base_idle = squad.idle_time
+    end
+    local ratio = get_vanilla_scale_ratio()
+    squad.idle_time = math.max(15, math.floor(squad.__rtz_base_idle * ratio + 0.5))
+end
+
+--- Scales Smart Terrain respawn timers to match vanilla 6.0x real-time pacing
+local function on_smart_try_respawn(smart, flags)
+    if not smart then return end
+    if smart.respawn_idle then
+        if not smart.__rtz_base_respawn_idle then
+            smart.__rtz_base_respawn_idle = smart.respawn_idle
+        end
+        local ratio = get_vanilla_scale_ratio()
+        smart.respawn_idle = math.max(60, math.floor(smart.__rtz_base_respawn_idle * ratio + 0.5))
     end
 end
+
+--- Installs A-Life hooks for squad movement idle timers and smart terrain respawn timers (Vanilla + ZCP)
+local function install_alife_hooks()
+    if alife_hooks_installed then return end
+    alife_hooks_installed = true
+
+    RegisterScriptCallback("squad_on_update", on_squad_update)
+    RegisterScriptCallback("on_try_respawn", on_smart_try_respawn)
+
+    -- Hook ZCP (Survival Mode Remade / smr_pop.smart_can_respawn) if present
+    if smr_pop and smr_pop.smart_can_respawn then
+        local org_smart_can_respawn = smr_pop.smart_can_respawn
+        smr_pop.smart_can_respawn = function(smart)
+            if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("vanilla_vitals_alife_scale") then
+                return org_smart_can_respawn(smart)
+            end
+            if not smart or smart.last_respawn_update == nil then
+                return org_smart_can_respawn(smart)
+            end
+
+            local ratio = get_vanilla_scale_ratio()
+            if smr_amain_mcm and smr_amain_mcm.get_config then
+                local smr_enabled = smr_amain_mcm.get_config("smr_enabled")
+                local cfg = smr_amain_mcm.get_config("respawn_idle")
+                if not smr_enabled and cfg ~= 86400 then
+                    local base_idle = smart.__rtz_base_respawn_idle or smart.respawn_idle or 86400
+                    return game.get_game_time():diffSec(smart.last_respawn_update) > (base_idle * ratio)
+                end
+                if cfg == -1 then
+                    return false
+                end
+                if type(cfg) == "number" and cfg > 0 then
+                    local diff = game.get_game_time():diffSec(smart.last_respawn_update)
+                    return diff > (cfg * ratio)
+                end
+            end
+            return org_smart_can_respawn(smart)
+        end
+        printf_rtz("Hooked smr_pop.smart_can_respawn for vanilla real-time A-Life respawn pacing.")
+    end
+end
+
+-- =======================================================================================
+-- Real-Time Clock Synchronization
+-- =======================================================================================
 
 --- Computes forward difference in seconds (0..86399), returning 0 if already within the same minute window
 local function get_clock_diff_seconds()
@@ -178,18 +477,10 @@ function sync_to_real_time(force)
     local hours = math.floor(total_mins / 60)
     local mins  = total_mins % 60
 
-    local snap = nil
-    if total_mins >= 2 then
-        snap = snapshot_vitals()
-    end
-
     if level and level.change_game_time then
-        level.change_game_time(0, hours, mins)
-        if total_mins >= 2 then
-            apply_post_jump_safeguards(total_mins * 60, snap)
-        end
+        change_game_time_guarded(0, hours, mins)
 
-        printf_rtz("In-game clock synchronized: was %02d:%02d:%02d -> now %02d:%02d (+%d hrs, +%d mins)",
+        printf_rtz("In-game clock synchronized (vitals guarded): was %02d:%02d:%02d -> now %02d:%02d (+%d hrs, +%d mins)",
             game_h, game_m, game_s, real.hour, real.min, hours, mins)
 
         if actor_menu and actor_menu.set_msg then
@@ -220,13 +511,16 @@ function enforce_time_factor()
 end
 
 function init()
+    install_alife_hooks()
     enforce_time_factor()
     sync_to_real_time(true)
+    sync_thirst_and_sleep_intervals()
 end
 
 function update()
     local tg = time_global()
     enforce_time_factor()
+    update_vanilla_hunger_drain(tg)
 
     if tg > last_drift_check + DRIFT_CHECK_MS then
         last_drift_check = tg
@@ -234,7 +528,7 @@ function update()
         if rtz_mcm.get_config("enabled") and rtz_mcm.get_config("sync_clock") then
             local diff_sec = get_clock_diff_seconds()
             if diff_sec >= 90 and diff_sec < 600 then
-                level.change_game_time(0, 0, math.floor(diff_sec / 60))
+                change_game_time_guarded(0, 0, math.floor(diff_sec / 60))
             end
         end
     end

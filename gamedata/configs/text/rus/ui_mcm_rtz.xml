@@ -170,4 +170,10 @@
 	<string id="st_rtz_w_storm">
 		<text>Гроза</text>
 	</string>
+	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale">
+		<text>Vanilla Vitals &amp; A-Life Pacing (6x)</text>
+	</string>
+	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale_desc">
+		<text>Keeps Hunger, Thirst, Sleep, and A-Life timers running at vanilla 6.0x real-time speed while the world clock runs at 1:1 real time.</text>
+	</string>
 </string_table>
