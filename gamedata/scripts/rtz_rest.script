@@ -350,7 +350,7 @@ function update_active_rest()
     -- Recovery calculation (8000 fatigue recovered over `rest_duration` real minutes, converted to seconds)
     local cfg_duration = rtz_mcm.get_config("rest_duration") or 5
     local total_duration = (cfg_duration <= 20) and (cfg_duration * 60) or 300
-    local mult = (rest_source == "bed") and 1.3 or ((rest_source == "sleepbag") and 1.15 or 1.0)
+    local mult = (rest_source == "bed") and 1.3 or ((rest_source == "sleepbag") and 1.0 or 0.6)
     local recovery_per_sec = (8000 / math.max(60, total_duration)) * mult
 
     current_rest_fatigue = math.max(0, current_rest_fatigue - (recovery_per_sec * dt))
@@ -380,7 +380,11 @@ function update_campfire_rest()
     last_campfire_tick = tg
 
     if get_nearby_lit_campfire(4.0) then
-        local rate = rtz_mcm.get_config("campfire_rest_rate") or 20
+        local cfg_duration = rtz_mcm.get_config("rest_duration") or 5
+        local total_duration = (cfg_duration <= 20) and (cfg_duration * 60) or 300
+        local sleepbag_rate = 8000 / math.max(60, total_duration)
+        -- Guarantee campfire rest is always slower than a sleeping bag or bed
+        local rate = math.min(rtz_mcm.get_config("campfire_rest_rate") or 6, sleepbag_rate * 0.65)
         local delta = rate * dt
         local cur_slp = get_actor_fatigue()
         if cur_slp > 100 then

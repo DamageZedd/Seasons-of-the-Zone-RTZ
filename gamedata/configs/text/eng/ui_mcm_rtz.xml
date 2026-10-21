@@ -95,7 +95,7 @@
 		<text>Campfire Rest Speed</text>
 	</string>
 	<string id="ui_mcm_rtz_campfire_rest_rate_desc">
-		<text>Fatigue recovery points per second when resting near a lit campfire.</text>
+		<text>Fatigue recovery points per second when resting near a lit campfire (default 6, max 12; always slower than a sleeping bag or bed).</text>
 	</string>
 	<string id="ui_mcm_rtz_wake_on_danger">
 		<text>Interrupt Rest on Danger / Damage</text>

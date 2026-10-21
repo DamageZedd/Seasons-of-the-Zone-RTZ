@@ -59,7 +59,7 @@ If you also want **hour-by-hour** live weather transitions throughout the day:
 | **Enable Real-Time Resting** | `On` | Replaces multi-hour sleep time-skips with the real-time rest screen. |
 | **Full Rest Duration** | `5 min` | Real minutes required to recover from 100% exhaustion to 0% at a bed (`1–10 min`). |
 | **Campfire Passive Rest** | `On` | Passively recovers sleep deprivation while sitting near a lit campfire. |
-| **Campfire Rest Speed** | `20 / sec` | Fatigue recovery rate near lit campfires (`5–50 / sec`). |
+| **Campfire Rest Speed** | `6 / sec` | Fatigue recovery rate near lit campfires (`1–12 / sec`, always slower than a sleeping bag or bed). |
 | **Interrupt Rest on Danger / Damage** | `On` | Instantly wakes the player if taking damage or bleeding. |
 | **Autosave Upon Waking** | `On` | Creates a `<name> - rest` save upon completing a rest session. |
 

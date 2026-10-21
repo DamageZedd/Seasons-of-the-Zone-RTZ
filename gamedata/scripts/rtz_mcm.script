@@ -15,7 +15,7 @@ local defaults = {
     ["enable_realtime_rest"]       = true,
     ["rest_duration"]              = 5,
     ["enable_campfire_rest"]       = true,
-    ["campfire_rest_rate"]         = 20,
+    ["campfire_rest_rate"]         = 6,
     ["wake_on_danger"]             = true,
     ["autosave_on_rest"]           = true,
 }
@@ -25,6 +25,9 @@ function get_config(key)
         local v = ui_mcm.get("rtz/" .. key)
         if v ~= nil then
             if key == "rest_duration" and type(v) == "number" and v > 10 then
+                return defaults[key]
+            end
+            if key == "campfire_rest_rate" and type(v) == "number" and v > 12 then
                 return defaults[key]
             end
             return v
@@ -63,7 +66,7 @@ function on_mcm_load()
             { id = "enable_realtime_rest", type = "check", val = 1, def = defaults["enable_realtime_rest"] },
             { id = "rest_duration", type = "track", val = 2, min = 1, max = 10, step = 1, def = defaults["rest_duration"] },
             { id = "enable_campfire_rest", type = "check", val = 1, def = defaults["enable_campfire_rest"] },
-            { id = "campfire_rest_rate", type = "track", val = 2, min = 5, max = 50, step = 5, def = defaults["campfire_rest_rate"] },
+            { id = "campfire_rest_rate", type = "track", val = 2, min = 1, max = 12, step = 1, def = defaults["campfire_rest_rate"] },
             { id = "wake_on_danger", type = "check", val = 1, def = defaults["wake_on_danger"] },
             { id = "autosave_on_rest", type = "check", val = 1, def = defaults["autosave_on_rest"] },
         }
