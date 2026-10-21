@@ -11,6 +11,22 @@ local function printf_rtz(fmt, ...)
     printf("[RTZ Clock] " .. fmt, ...)
 end
 
+--- Safely retrieves in-game (hours, minutes, seconds) using level and CTime:get()
+local function get_game_hms()
+    local h = (level and level.get_time_hours and level.get_time_hours()) or 0
+    local m = (level and level.get_time_minutes and level.get_time_minutes()) or 0
+    local s = 0
+    if game and game.get_game_time then
+        local gt = game.get_game_time()
+        if gt and gt.get then
+            local Y, M, D, gh, gm, gs, ms = 0, 0, 0, 0, 0, 0, 0
+            Y, M, D, gh, gm, gs, ms = gt:get(Y, M, D, gh, gm, gs, ms)
+            s = gs or 0
+        end
+    end
+    return h, m, s
+end
+
 --- Snapshots actor vitals prior to a large clock sync jump
 local function snapshot_vitals()
     local snap = {}
@@ -121,9 +137,7 @@ local function get_clock_diff_seconds()
     if not real then return 0, nil end
 
     local real_sec = real.hour * 3600 + real.min * 60 + real.sec
-    local game_h   = level.get_time_hours()
-    local game_m   = level.get_time_minutes()
-    local game_s   = level.get_time_seconds()
+    local game_h, game_m, game_s = get_game_hms()
     local game_sec = game_h * 3600 + game_m * 60 + game_s
 
     -- Signed shortest distance on the 24h circle (-43200 .. +43200)
@@ -154,9 +168,7 @@ function sync_to_real_time(force)
         return
     end
 
-    local game_h = level.get_time_hours()
-    local game_m = level.get_time_minutes()
-    local game_s = level.get_time_seconds()
+    local game_h, game_m, game_s = get_game_hms()
 
     -- Calculate exact whole hours & minutes to land on real.hour : real.min
     local total_mins = (real.hour * 60 + real.min) - (game_h * 60 + game_m)
