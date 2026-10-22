@@ -10,6 +10,8 @@ local defaults = {
     ["time_factor_val"]            = 1.0,
     ["safeguard_vitals"]           = true,
     ["vanilla_vitals_alife_scale"] = true,
+    ["vitals_mode"]                = 0,
+    ["fix_boosters_and_effects"]   = true,
     ["enable_real_weather"]        = true,
     ["weather_sync_interval"]      = 5,
     ["enable_realtime_rest"]       = true,
@@ -53,6 +55,12 @@ function on_mcm_load()
             { id = "time_factor_val", type = "track", val = 2, min = 1.0, max = 10.0, step = 0.5, def = defaults["time_factor_val"] },
             { id = "safeguard_vitals", type = "check", val = 1, def = defaults["safeguard_vitals"] },
             { id = "vanilla_vitals_alife_scale", type = "check", val = 1, def = defaults["vanilla_vitals_alife_scale"] },
+            { id = "vitals_mode", type = "list", val = 2, def = defaults["vitals_mode"], content = {
+                { 0, "rtz_vitals_vanilla" },
+                { 1, "rtz_vitals_realtime" },
+                { 2, "rtz_vitals_disabled" },
+            }},
+            { id = "fix_boosters_and_effects", type = "check", val = 1, def = defaults["fix_boosters_and_effects"] },
 
             -- 2. Live Real-World Weather
             { id = "divider_weather", type = "line" },

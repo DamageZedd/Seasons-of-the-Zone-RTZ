@@ -6,7 +6,11 @@
    - Locks the engine `time_factor` to `1.0` (1 real second = 1 in-game second; vanilla Anomaly is `6.0`).
    - Synchronizes the in-game clock (`hours:minutes`) directly with your computer's OS wall clock (`os.date("*t")`) when loading a save or changing levels.
    - **Strict Vitals & Emission Guard**: Whenever the clock synchronizes or adjusts, Hunger (`satiety`), Thirst (`actor_status_thirst`), Sleep (`actor_status_sleep`), Health, Stamina, Bleeding, and Emission timers are snapshotted and restored to their exact pre-jump values so vitals are left 100% untouched.
-   - **Vanilla 6x Vitals & A-Life Pacing**: Keeps Hunger, Thirst, Sleep, A-Life squad movement/idle timers, Smart Terrain respawns (Vanilla & ZCP), and Emission intervals progressing at the exact same real-world pace as vanilla Anomaly (`time_factor = 6.0`) while the world clock runs at 1:1 real time.
+   - **Vanilla 6x Vitals & A-Life Pacing + Configurable Hunger & Thirst Mode**: Keeps A-Life squad movement/idle timers, Smart Terrain respawns (Vanilla & ZCP), Emission intervals, and Sleep progressing at vanilla Anomaly speed (`time_factor = 6.0`), while giving you a 3-way **Hunger & Thirst Mode** selector in MCM:
+     - **Vanilla Speed (6x)** *(Default)*: Hunger and Thirst drain at vanilla Anomaly real-time speed.
+     - **Real-Time Speed (1:1)**: Hunger and Thirst drain 6x slower in real time, matching the 1:1 clock.
+     - **Disabled (No Eat / Drink)**: Locks hunger and thirst at 100% full so the protagonist never needs to eat or drink.
+   - **1:1 Medkit Healing & Anomaly Camera Shake Fix**: Compensates the X-Ray Engine C++ quirk where consumable boosters (`boost_time`) expire in real seconds while multiplying `boost_health_restore`, `boost_power_restore`, `boost_radiation_restore`, and `boost_bleeding_restore` by `time_factor` (which otherwise caused medkits to only heal 1/6th of their value at `1:1` speed), and patches Demonized's **Dynamic Anomalies Overhaul (DAO) / Arrival**, **Perk-Based Artefacts**, and **Arszi Psy** so gravitational anomaly camera shakes (`earthquake_40.anm`) and psy/alcohol recovery finish at the normal vanilla real-time speed.
 2. **Live Real-World Weather (Open-Meteo)**:
    - Drives in-game weather cycles (`clear`, `partly`, `cloudy`, `foggy`, `rain`, `storm`, `snow`) directly from the real-world meteorological observations at your configured *Seasons of the Zone* location instead of random probability, and updates `WeatherManager.day_plan` so *Seasons of the Zone*'s in-game PDA Forecast tab displays your real-world schedule.
    - Works out-of-the-box with both **Atmospherics** and **W.P.W.M. (Weighted Probability Weather Manager)**.
@@ -53,7 +57,9 @@ If you also want **hour-by-hour** live weather transitions throughout the day:
 | **Enforce 1:1 Real-Time Speed** | `On` | Locks `time_factor` to the target value (`1.0` default). |
 | **Custom Time Factor** | `1.0` | Adjustable from `1.0` (true 1:1 real time) to `10.0` (vanilla is `6.0`). |
 | **Safeguard Vitals on Time Jump** | `On` | Strictly preserves exact hunger, thirst, sleep, health, and emission progress across clock sync jumps. |
-| **Preserve Vanilla Vitals & A-Life Pacing (6x)** | `On` | Keeps Hunger, Thirst, Sleep, A-Life squad movement/respawns, and Emissions running at vanilla `6.0x` real-time speed. |
+| **Preserve Vanilla Vitals & A-Life Pacing (6x)** | `On` | Keeps Sleep, A-Life squad movement/respawns, and Emissions running at vanilla `6.0x` real-time speed. |
+| **Hunger & Thirst Mode** | `Vanilla (6x)` | Choose between **Vanilla Speed (6x)**, **Real-Time Speed (1:1)**, or **Disabled (No Eat / Drink)**. |
+| **1:1 Medkit Healing & Anomaly Shake Fix** | `On` | Fixes medkits/boosters only healing 1/6th at 1:1 time factor and fixes DAO/Arrival anomaly camera shake & psy recovery lasting 6x too long. |
 | **Sync Weather with Real Location** | `On` | Drives weather transitions from Open-Meteo for your *Seasons of the Zone* location. |
 | **Weather Check Interval** | `5 min` | How often to check for hourly real-world weather transitions (`1–30 min`). |
 | **Enable Real-Time Resting** | `On` | Replaces multi-hour sleep time-skips with the real-time rest screen. |
@@ -69,4 +75,6 @@ If you also want **hour-by-hour** live weather transitions throughout the day:
 - **Author**: `Denis_Zedd` (`DamageZedd`)
 - **Concept & Design Discussion**: `Denis_Zedd` & `WindWalker`
 - **Built for**: [*Seasons of the Zone*](https://github.com/devinhorowitz/seasonsofthezone) by Devin Horowitz (`WindWalker`)
+- **W.P.W.M. (Weighted Probability Weather Manager)**: `UmYeahNo` (`check_day_plan` emission guard & restore architecture)
+- **Community Feedback & Testing**: `LittleMorty`
 - **Weather Data**: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0)

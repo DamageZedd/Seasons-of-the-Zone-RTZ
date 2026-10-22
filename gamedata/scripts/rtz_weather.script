@@ -1,6 +1,8 @@
 -- =======================================================================================
 -- Real Time Zone (RTZ) - Live Real-World Weather Integration Module
 -- Addon for Seasons of the Zone by Denis_Zedd
+-- Credits: W.P.W.M. (Weighted Probability Weather Manager) check_day_plan emission
+--          guard & restore integration courtesy of UmYeahNo
 -- =======================================================================================
 
 local last_weather_check = 0
@@ -242,16 +244,13 @@ local function install_weather_hooks()
     end
 
     -- 2. Hook W.P.W.M.'s check_day_plan so pre-rolled random segments don't overwrite real-world weather
+    -- Delegates pre_blowout_period / weather_fx handling directly to W.P.W.M. (UmYeahNo) original check_day_plan
     if level_weathers.WeatherManager.check_day_plan then
         local org_check_day_plan = level_weathers.WeatherManager.check_day_plan
         level_weathers.WeatherManager.check_day_plan = function(self)
             if rtz_mcm.get_config("enabled") and rtz_mcm.get_config("enable_real_weather") then
                 if self.pre_blowout_period or self.weather_fx then
-                    self.blowout_override = true
-                    if not level.is_wfx_playing() then
-                        self:select_weather(false)
-                    end
-                    return
+                    return org_check_day_plan(self)
                 end
                 local restored = false
                 if self.blowout_override then

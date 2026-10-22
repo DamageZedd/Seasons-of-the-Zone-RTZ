@@ -49,7 +49,37 @@
 		<text>Preserve Vanilla Vitals &amp; A-Life Pacing (6x)</text>
 	</string>
 	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale_desc">
-		<text>Ensures Hunger, Thirst, Sleep, A-Life squad movement/idle timers, Smart Terrain respawns (Vanilla &amp; ZCP), and Emission intervals continue to progress at the exact same real-world rate as vanilla Anomaly (time factor 6.0) even while the world clock runs at 1:1 real time.</text>
+		<text>Ensures Sleep, A-Life squad movement/idle timers, Smart Terrain respawns (Vanilla &amp; ZCP), and Emission intervals continue to progress at the exact same real-world rate as vanilla Anomaly (time factor 6.0) even while the world clock runs at 1:1 real time.</text>
+	</string>
+	<string id="ui_mcm_rtz_vitals_mode">
+		<text>Hunger &amp; Thirst Mode</text>
+	</string>
+	<string id="ui_mcm_rtz_vitals_mode_desc">
+		<text>Controls how Hunger and Thirst drain while playing in real time:\n- Vanilla Speed (6x): Hunger and Thirst drain at vanilla Anomaly speed.\n- Real-Time Speed (1:1): Hunger and Thirst drain 6x slower in real time, matching the 1:1 clock.\n- Disabled (No Eat / Drink): Locks hunger and thirst at 100% full so the protagonist never needs to eat or drink.</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_vanilla">
+		<text>Vanilla Speed (6x)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_realtime">
+		<text>Real-Time Speed (1:1)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_disabled">
+		<text>Disabled (No Eat / Drink)</text>
+	</string>
+	<string id="rtz_vitals_vanilla">
+		<text>Vanilla Speed (6x)</text>
+	</string>
+	<string id="rtz_vitals_realtime">
+		<text>Real-Time Speed (1:1)</text>
+	</string>
+	<string id="rtz_vitals_disabled">
+		<text>Disabled (No Eat / Drink)</text>
+	</string>
+	<string id="ui_mcm_rtz_fix_boosters_and_effects">
+		<text>1:1 Medkit Healing &amp; Anomaly Shake Fix</text>
+	</string>
+	<string id="ui_mcm_rtz_fix_boosters_and_effects_desc">
+		<text>Fixes the X-Ray Engine C++ quirk where medkits, bandages, and drug boosters only heal 1/6th of their intended value at 1:1 time factor, and fixes gravitational anomaly camera shake (DAO / Arrival), psy-health recovery, and alcohol decay lasting 6x too long.</text>
 	</string>
 
 	<!-- Weather Settings -->

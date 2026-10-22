@@ -12,8 +12,21 @@
 - **Full Rest Duration & Campfire Speed Balance (`rtz_mcm.script`, `rtz_rest.script`)**:
   - Updated **Full Rest Duration** in MCM to **Minutes** with a default of **5 minutes** and a maximum of **10 minutes** (`1–10 min`).
   - Reduced **Campfire Rest Speed** default to **`6 / sec`** (`1–12 / sec` in MCM) and dynamically capped it below sleeping bag and bed recovery rates so campfire resting is always slower than a sleeping bag or bed.
+- **Hunger & Thirst Mode Selector (`vitals_mode` in `rtz_mcm.script`, `rtz_clock.script`)**:
+  - Added a 3-way MCM option for Hunger and Thirst:
+    - `0` = **Vanilla Speed (6x)** *(Default)*: Hunger and Thirst drain at vanilla Anomaly real-time speed.
+    - `1` = **Real-Time Speed (1:1)**: Hunger and Thirst drain 6x slower in real time, matching the 1:1 clock.
+    - `2` = **Disabled (No Eat / Drink)**: Locks `db.actor.satiety = 1.0` and `last_drink = 0` so the protagonist never needs to eat or drink.
 
 ### Fixed
+- **1:1 Medkit / Booster Healing & Passive Recovery Fix (`fix_boosters_and_effects` in `rtz_clock.script`)**:
+  - Fixed the X-Ray Engine C++ quirk where consumable boosters (`boost_time`) count down in real seconds while multiplying `boost_health_restore`, `boost_power_restore`, `boost_radiation_restore`, and `boost_bleeding_restore` by `level.get_time_factor()` (which caused medkits and drugs to only heal 1/6th of their intended value at `time_factor = 1.0`).
+  - Compensated passive `[actor_condition]` rates (`psy_health_v`, `alcohol_v`, and `wound_incarnation_v`) so passive psy recovery, vodka drunkenness decay, and natural wound clotting progress at vanilla real-time speed.
+- **Anomaly Camera Shake & Psy Recovery Duration Fix (`rtz_clock.script`)**:
+  - Patched the hardcoded `local time_factor = 6` upvalue inside Demonized's **Dynamic Anomalies Overhaul (DAO) / Arrival** (`drx_da_main.script`) and **Perk-Based Artefacts** (`perk_based_artefacts.script`) with a monotonic real-time `get_time_elapsed` clock so gravitational anomaly camera shakes (`earthquake_40.anm`) and timed effects expire in 1 real second instead of lasting 6x too long.
+  - Hooked `arszi_psy.get_psy_health_regeneration` so psy-health regenerates at vanilla real-time speed when running at `1:1` time factor.
+- **W.P.W.M. `check_day_plan` Emission Guard Delegation & Credits (`rtz_weather.script`, `README.md`)**:
+  - Updated the `WeatherManager.check_day_plan` hook to delegate directly to `org_check_day_plan(self)` while `pre_blowout_period` or `weather_fx` is set, and added **W.P.W.M. (`UmYeahNo`)** to the credits per author feedback.
 - **Strict Vitals Guard on Clock Sync & Rest (`rtz_clock.script`, `rtz_rest.script`)**:
   - Replaced clamped vitals restoration with `change_game_time_guarded`, which snapshots and restores the **exact** pre-jump values of Hunger (`satiety`), Thirst (`last_drink` + sub-tick `last_drink_chk` offset), Sleep (`last_sleep` + sub-tick `last_sleep_chk` offset), Health, Stamina, Bleeding, and Surge/Psi-Storm progress on both initial sync and periodic drift checks.
   - Guarded `satiety` and `last_drink` around `actor_on_sleep` in `rtz_rest.script` so waking from real-time rest never triggers third-party hunger/thirst penalties.

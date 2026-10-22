@@ -11,12 +11,27 @@ local DRIFT_CHECK_MS = 20000 -- Check drift every 20s
 local last_vitals_tick = 0
 local VITALS_TICK_MS = 1000 -- Compensate C++ hunger every 1s
 
+local last_booster_tick = 0
+local BOOSTER_TICK_MS = 100 -- Compensate C++ medkit/booster healing & passive conditions every 100ms
+
 local is_synced = false
 local alife_hooks_installed = false
+local arszi_psy_hooked = false
 
 local base_drink_chk = nil
 local base_sleep_chk = nil
 local cached_satiety_v = nil
+local cached_psy_health_v = nil
+local cached_alcohol_v = nil
+local cached_wound_incarnation_v = nil
+
+-- Active consumable boosters tracked in real seconds (matches C++ SBooster categories)
+local active_boosters = {}
+
+-- Monotonic real-time elapsed clock for Demonized's DAO (drx_da_main) & PBA (perk_based_artefacts)
+local rtz_elapsed_anchor = nil
+local rtz_elapsed_start_tg = nil
+local orig_drx_get_time_elapsed = nil
 
 local function printf_rtz(fmt, ...)
     printf("[RTZ Clock] " .. fmt, ...)
@@ -256,18 +271,248 @@ end
 
 -- =======================================================================================
 -- Vanilla Time-Scale Preservation for Hunger, Thirst, Sleep & A-Life
+-- + Hunger/Thirst Mode (Vanilla 6x / Real-Time 1:1 / Disabled)
+-- + 1:1 Medkit/Booster Healing & Anomaly Camera Shake Fixes
 -- =======================================================================================
 
---- Syncs Thirst and Sleep check intervals so they drain at the exact vanilla 6.0x real-time rate
+--- Tracks consumable items with `boost_time > 0` so RTZ can compensate C++ healing at 1:1 time_factor
+local function on_actor_item_use(obj, sec)
+    pcall(function()
+        sec = sec or (obj and obj.section and obj:section())
+        if not sec or not ini_sys then return end
+
+        if sec == "drug_anabiotic" then
+            active_boosters = {}
+            return
+        end
+
+        local bt = ini_sys:r_float_ex(sec, "boost_time") or 0
+        if not bt or bt <= 0 then return end
+
+        local hp_rate  = ini_sys:r_float_ex(sec, "boost_health_restore") or 0
+        local pwr_rate = ini_sys:r_float_ex(sec, "boost_power_restore") or 0
+        local rad_rate = ini_sys:r_float_ex(sec, "boost_radiation_restore") or 0
+        local bld_rate = ini_sys:r_float_ex(sec, "boost_bleeding_restore") or 0
+
+        if hp_rate ~= 0 then
+            active_boosters.hp = { rate = hp_rate, remaining = bt }
+        end
+        if pwr_rate ~= 0 then
+            active_boosters.pwr = { rate = pwr_rate, remaining = bt }
+        end
+        if rad_rate ~= 0 then
+            active_boosters.rad = { rate = rad_rate, remaining = bt }
+        end
+        if bld_rate ~= 0 then
+            active_boosters.bld = { rate = bld_rate, remaining = bt }
+        end
+    end)
+end
+
+--- Compensates C++ medkit/drug boosters and passive conditions (psy, alcohol, wound healing) every 100ms
+local function update_boosters_and_effects(tg)
+    if last_booster_tick == 0 then
+        last_booster_tick = tg
+        return
+    end
+    if tg < last_booster_tick + BOOSTER_TICK_MS then
+        return
+    end
+
+    local dt_real = math.min(1.0, (tg - last_booster_tick) / 1000.0)
+    last_booster_tick = tg
+
+    if not db.actor or not db.actor:alive() then
+        active_boosters = {}
+        return
+    end
+
+    -- Enforce "No Eat / Drink" mode immediately if vitals_mode == 2
+    if rtz_mcm.get_config("enabled") and (tonumber(rtz_mcm.get_config("vitals_mode")) or 0) == 2 then
+        pcall(function()
+            if db.actor.satiety and db.actor.satiety < 0.999 then
+                db.actor.satiety = 1.0
+            end
+        end)
+    end
+
+    pcall(function()
+        local cur_tf = (level and level.get_time_factor and level.get_time_factor()) or 1.0
+        local missing_tf = math.max(0.0, VANILLA_TIME_FACTOR - cur_tf)
+        local do_comp = rtz_mcm.get_config("enabled")
+            and rtz_mcm.get_config("fix_boosters_and_effects")
+            and (missing_tf > 0.05)
+            and not (rtz_rest and rtz_rest.is_resting)
+
+        -- 1. Tick active consumable boosters (medkits, bandages, stimpacks, antirad, drugs)
+        for k, b in pairs(active_boosters) do
+            local step_dt = math.min(b.remaining, dt_real)
+            b.remaining = b.remaining - step_dt
+
+            if do_comp and step_dt > 0 then
+                if k == "hp" and db.actor.change_health then
+                    db.actor:change_health(b.rate * missing_tf * step_dt)
+                elseif k == "pwr" and db.actor.change_power then
+                    db.actor:change_power(b.rate * missing_tf * step_dt)
+                elseif k == "rad" and db.actor.change_radiation then
+                    if (b.rate > 0 and (db.actor.radiation or 0) > 0) or b.rate < 0 then
+                        db.actor:change_radiation(-b.rate * missing_tf * step_dt)
+                    end
+                elseif k == "bld" and b.rate > 0 and (db.actor.bleeding or 0) > 0 and db.actor.heal_wounds then
+                    db.actor:heal_wounds(b.rate * missing_tf * step_dt)
+                end
+            end
+
+            if b.remaining <= 0.0001 then
+                active_boosters[k] = nil
+            end
+        end
+
+        -- 2. Compensate passive C++ actor_condition recovery (psy_health_v, alcohol_v, wound_incarnation_v)
+        if do_comp then
+            if not cached_psy_health_v then
+                cached_psy_health_v = (ini_sys and ini_sys:r_float_ex("actor_condition", "psy_health_v")) or 0.001
+                cached_alcohol_v = (ini_sys and ini_sys:r_float_ex("actor_condition", "alcohol_v")) or -0.0003
+                cached_wound_incarnation_v = (ini_sys and ini_sys:r_float_ex("actor_condition", "wound_incarnation_v")) or 0.0003
+            end
+            if (db.actor.psy_health or 1.0) < 1.0 and db.actor.change_psy_health then
+                db.actor:change_psy_health(cached_psy_health_v * missing_tf * dt_real)
+            end
+            if (db.actor.alcohol or 0) > 0 then
+                db.actor.alcohol = math.max(0.0, db.actor.alcohol + cached_alcohol_v * missing_tf * dt_real)
+            end
+            if (db.actor.bleeding or 0) > 0 and db.actor.heal_wounds then
+                db.actor:heal_wounds(cached_wound_incarnation_v * missing_tf * dt_real)
+            end
+        end
+    end)
+end
+
+--- Monotonic real-time `get_time_elapsed` replacement for DAO (`drx_da_main`) and PBA (`perk_based_artefacts`)
+local function get_rtz_monotonic_elapsed()
+    if not rtz_elapsed_anchor or not rtz_elapsed_start_tg then
+        local raw = 0
+        pcall(function()
+            raw = math.floor(game.get_game_time():diffSec(level.get_start_time()) / VANILLA_TIME_FACTOR * 10) * 0.1
+        end)
+        local min_surge = (drx_da_main and tonumber(drx_da_main.last_surge_time)) or 0
+        rtz_elapsed_anchor = math.max(raw, min_surge + 1.0)
+        rtz_elapsed_start_tg = time_global()
+    end
+    local dt_sec = math.max(0, time_global() - rtz_elapsed_start_tg) * 0.001
+    return math.floor((rtz_elapsed_anchor + dt_sec) * 10) * 0.1
+end
+
+local function rtz_drx_get_time_elapsed()
+    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("fix_boosters_and_effects") then
+        if orig_drx_get_time_elapsed then
+            return orig_drx_get_time_elapsed()
+        end
+    end
+    return get_rtz_monotonic_elapsed()
+end
+
+--- Patches Demonized's DAO (`drx_da_main`), PBA (`perk_based_artefacts`), and `arszi_psy` so anomaly camera
+--- shakes (`earthquake_40.anm`), timed effects, and psy recovery run at 1:1 real-time speed
+local function patch_external_time_elapsed_mods()
+    pcall(function()
+        -- 1. Patch Dynamic Anomalies Overhaul / Arrival (drx_da_main)
+        if drx_da_main then
+            if drx_da_main.actor_on_update then
+                local cur_fn = get_upvalue_by_name(drx_da_main.actor_on_update, "get_time_elapsed")
+                if cur_fn and cur_fn ~= rtz_drx_get_time_elapsed then
+                    orig_drx_get_time_elapsed = cur_fn
+                    set_upvalue_by_name(drx_da_main.actor_on_update, "get_time_elapsed", rtz_drx_get_time_elapsed)
+                end
+            end
+            if drx_da_main.actor_on_interaction then
+                set_upvalue_by_name(drx_da_main.actor_on_interaction, "get_time_elapsed", rtz_drx_get_time_elapsed)
+            end
+            -- Clamp any stale future timed_effects (e.g. stuck camera shake from before fix)
+            if type(drx_da_main.timed_effects) == "table" then
+                local now_el = get_rtz_monotonic_elapsed()
+                for _, props in pairs(drx_da_main.timed_effects) do
+                    if type(props) == "table" and type(props.timer) == "number" and props.timer > now_el + 120 then
+                        props.timer = now_el + 1.0
+                    end
+                end
+            end
+        end
+
+        -- 2. Patch Perk-Based Artefacts (perk_based_artefacts)
+        if perk_based_artefacts then
+            if perk_based_artefacts.actor_on_update then
+                local cur_fn = get_upvalue_by_name(perk_based_artefacts.actor_on_update, "get_time_elapsed")
+                if cur_fn then
+                    local cur_tf = (level and level.get_time_factor and level.get_time_factor()) or 1.0
+                    set_upvalue_by_name(cur_fn, "time_factor", cur_tf)
+                end
+            end
+        end
+
+        -- 3. Hook arszi_psy.get_psy_health_regeneration so psy-health recovers at vanilla real-time speed
+        if not arszi_psy_hooked and arszi_psy and arszi_psy.get_psy_health_regeneration then
+            local org_get_psy_regen = arszi_psy.get_psy_health_regeneration
+            arszi_psy.get_psy_health_regeneration = function(...)
+                local val = org_get_psy_regen(...)
+                if type(val) == "number" and rtz_mcm.get_config("enabled") and rtz_mcm.get_config("fix_boosters_and_effects") then
+                    local cur_tf = (level and level.get_time_factor and level.get_time_factor()) or 1.0
+                    local scale = math.max(1.0, VANILLA_TIME_FACTOR / math.max(0.5, cur_tf))
+                    return val * scale
+                end
+                return val
+            end
+            arszi_psy_hooked = true
+            printf_rtz("Hooked arszi_psy.get_psy_health_regeneration for 1:1 real-time psy recovery.")
+        end
+    end)
+end
+
+--- Syncs Thirst and Sleep check intervals based on `vitals_mode` and `vanilla_vitals_alife_scale`
 local function sync_thirst_and_sleep_intervals()
     pcall(function()
         local ratio = get_vanilla_scale_ratio()
+        local enabled = rtz_mcm.get_config("enabled")
+        local vitals_mode = enabled and (tonumber(rtz_mcm.get_config("vitals_mode")) or 0) or 0
 
         if actor_status_thirst and actor_status_thirst.actor_on_update then
             if not base_drink_chk then
                 base_drink_chk = get_upvalue_by_name(actor_status_thirst.actor_on_update, "drink_chk") or 300
             end
-            local target_drink_chk = math.max(10, math.floor(base_drink_chk * ratio + 0.5))
+            local target_drink_chk = base_drink_chk
+            if vitals_mode == 2 then
+                -- Disabled (No Eat / Drink): prevent thirst ticks and keep last_drink at 0
+                target_drink_chk = 300000
+                if actor_status_thirst.get_last_drink and (actor_status_thirst.get_last_drink() or 0) > 0 then
+                    local now_gt = game and game.get_game_time and game.get_game_time() or nil
+                    local chk_tbl = (utils_data and utils_data.CTime_to_table and now_gt)
+                        and utils_data.CTime_to_table(now_gt) or nil
+                    if actor_status_thirst.load_state then
+                        actor_status_thirst.load_state({
+                            drink = {
+                                last_drink = 0,
+                                chk_drink = chk_tbl,
+                            }
+                        })
+                    end
+                    if alife_storage_manager and alife_storage_manager.get_state then
+                        local st = alife_storage_manager.get_state()
+                        if st and st.drink then
+                            st.drink.last_drink = 0
+                            st.drink.chk_drink = chk_tbl
+                        end
+                    end
+                    if actor_status_thirst.test_blur then
+                        actor_status_thirst.test_blur()
+                    end
+                end
+            elseif vitals_mode == 1 then
+                -- 1:1 Real-Time Speed: use unscaled 300 in-game seconds (5 real minutes per tick)
+                target_drink_chk = base_drink_chk
+            else
+                -- Vanilla 6x Speed: scale by ratio (50 real seconds per tick)
+                target_drink_chk = math.max(10, math.floor(base_drink_chk * ratio + 0.5))
+            end
             set_upvalue_by_name(actor_status_thirst.actor_on_update, "drink_chk", target_drink_chk)
         end
 
@@ -281,7 +526,7 @@ local function sync_thirst_and_sleep_intervals()
     end)
 end
 
---- Compensates C++ engine hunger drain (`satiety_v`) so hunger drains at vanilla 6.0x real-time speed
+--- Compensates C++ engine hunger drain (`satiety_v`) based on `vitals_mode` and `vanilla_vitals_alife_scale`
 local function update_vanilla_hunger_drain(tg)
     if last_vitals_tick == 0 then
         last_vitals_tick = tg
@@ -294,8 +539,9 @@ local function update_vanilla_hunger_drain(tg)
     local dt_real = math.min(5.0, (tg - last_vitals_tick) / 1000.0)
     last_vitals_tick = tg
 
-    -- Sync Thirst & Sleep check upvalues and Surge/Psi-Storm deltas
+    -- Sync Thirst & Sleep check upvalues, DAO/PBA/Psy hooks, and Surge/Psi-Storm deltas
     sync_thirst_and_sleep_intervals()
+    patch_external_time_elapsed_mods()
 
     pcall(function()
         local ratio = get_vanilla_scale_ratio()
@@ -321,10 +567,29 @@ local function update_vanilla_hunger_drain(tg)
         end
     end)
 
-    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("vanilla_vitals_alife_scale") then
+    if not rtz_mcm.get_config("enabled") then
         return
     end
     if not db.actor or not db.actor:alive() then
+        return
+    end
+
+    local vitals_mode = tonumber(rtz_mcm.get_config("vitals_mode")) or 0
+    if vitals_mode == 2 then
+        -- Disabled (No Eat / Drink): lock satiety at 100%
+        pcall(function()
+            if db.actor.satiety and db.actor.satiety < 0.999 then
+                db.actor.satiety = 1.0
+            end
+        end)
+        return
+    elseif vitals_mode == 1 then
+        -- 1:1 Real-Time Speed: let C++ engine drain satiety naturally at 1:1 time_factor
+        return
+    end
+
+    -- vitals_mode == 0 (Vanilla 6x Speed)
+    if not rtz_mcm.get_config("vanilla_vitals_alife_scale") then
         return
     end
     -- Do not drain extra hunger in God Mode or while inside RTZ Rest screen
@@ -385,13 +650,14 @@ local function on_smart_try_respawn(smart, flags)
     end
 end
 
---- Installs A-Life hooks for squad movement idle timers and smart terrain respawn timers (Vanilla + ZCP)
+--- Installs A-Life hooks for squad movement idle timers, smart terrain respawn timers, and item booster tracking
 local function install_alife_hooks()
     if alife_hooks_installed then return end
     alife_hooks_installed = true
 
     RegisterScriptCallback("squad_on_update", on_squad_update)
     RegisterScriptCallback("on_try_respawn", on_smart_try_respawn)
+    RegisterScriptCallback("actor_on_item_use", on_actor_item_use)
 
     -- Hook ZCP (Survival Mode Remade / smr_pop.smart_can_respawn) if present
     if smr_pop and smr_pop.smart_can_respawn then
@@ -515,11 +781,13 @@ function init()
     enforce_time_factor()
     sync_to_real_time(true)
     sync_thirst_and_sleep_intervals()
+    patch_external_time_elapsed_mods()
 end
 
 function update()
     local tg = time_global()
     enforce_time_factor()
+    update_boosters_and_effects(tg)
     update_vanilla_hunger_drain(tg)
 
     if tg > last_drift_check + DRIFT_CHECK_MS then

@@ -176,4 +176,34 @@
 	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale_desc">
 		<text>Keeps Hunger, Thirst, Sleep, and A-Life timers running at vanilla 6.0x real-time speed while the world clock runs at 1:1 real time.</text>
 	</string>
+	<string id="ui_mcm_rtz_vitals_mode">
+		<text>Режим голода и жажды</text>
+	</string>
+	<string id="ui_mcm_rtz_vitals_mode_desc">
+		<text>Определяет скорость расхода сытости и жажды в реальном времени:\n- Ванильная скорость (6x): голод и жажда растут со стандартной скоростью Anomaly.\n- Реальное время (1:1): голод и жажда растут в 6 раз медленнее (по часам 1:1).\n- Отключено (без еды и воды): персонаж никогда не хочет есть или пить.</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_vanilla">
+		<text>Ванильная скорость (6x)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_realtime">
+		<text>Реальное время (1:1)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_disabled">
+		<text>Отключено (без еды и воды)</text>
+	</string>
+	<string id="rtz_vitals_vanilla">
+		<text>Ванильная скорость (6x)</text>
+	</string>
+	<string id="rtz_vitals_realtime">
+		<text>Реальное время (1:1)</text>
+	</string>
+	<string id="rtz_vitals_disabled">
+		<text>Отключено (без еды и воды)</text>
+	</string>
+	<string id="ui_mcm_rtz_fix_boosters_and_effects">
+		<text>Исправление лечения аптечек и тряски камеры (1:1)</text>
+	</string>
+	<string id="ui_mcm_rtz_fix_boosters_and_effects_desc">
+		<text>Исправляет особенность движка X-Ray, из-за которой аптечки и препараты лечат лишь 1/6 от нормы при факторе времени 1:1, а также устраняет 6-кратное затягивание тряски камеры от аномалий и восстановления пси-здоровья.</text>
+	</string>
 </string_table>
