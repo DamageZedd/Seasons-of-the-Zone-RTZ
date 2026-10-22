@@ -777,6 +777,30 @@ local function install_alife_hooks()
                 return org_surge_start(self, manual)
             end
         end
+
+        -- Wrap CSurgeManager.end_surge so lingering blowout weather FX (50 in-game mins) stops immediately
+        -- instead of lasting 6x longer in real time at 1:1 time_factor, and re-syncs the clock to wall-clock time
+        if surge_manager.CSurgeManager.end_surge then
+            local org_end_surge = surge_manager.CSurgeManager.end_surge
+            surge_manager.CSurgeManager.end_surge = function(self, manual)
+                org_end_surge(self, manual)
+                if rtz_mcm.get_config("enabled") then
+                    pcall(function()
+                        if level and level.is_wfx_playing and level.is_wfx_playing() then
+                            level.stop_weather_fx()
+                        end
+                        if level_weathers and level_weathers.get_weather_manager then
+                            local wm = level_weathers.get_weather_manager()
+                            if wm and wm.forced_weather_change then
+                                wm:forced_weather_change()
+                            end
+                        end
+                    end)
+                    enforce_time_factor()
+                    sync_to_real_time(true)
+                end
+            end
+        end
     end
 
     if psi_storm_manager and psi_storm_manager.CPsiStormManager then
@@ -803,6 +827,29 @@ local function install_alife_hooks()
                     return org_psi_start(self, true)
                 end
                 return org_psi_start(self, manual)
+            end
+        end
+
+        -- Wrap CPsiStormManager.finish so lingering psi-storm weather FX stops immediately
+        if psi_storm_manager.CPsiStormManager.finish then
+            local org_psi_finish = psi_storm_manager.CPsiStormManager.finish
+            psi_storm_manager.CPsiStormManager.finish = function(self, manual)
+                org_psi_finish(self, manual)
+                if rtz_mcm.get_config("enabled") then
+                    pcall(function()
+                        if level and level.is_wfx_playing and level.is_wfx_playing() then
+                            level.stop_weather_fx()
+                        end
+                        if level_weathers and level_weathers.get_weather_manager then
+                            local wm = level_weathers.get_weather_manager()
+                            if wm and wm.forced_weather_change then
+                                wm:forced_weather_change()
+                            end
+                        end
+                    end)
+                    enforce_time_factor()
+                    sync_to_real_time(true)
+                end
             end
         end
     end

@@ -2,7 +2,16 @@
 
 ## [1.0.3] - 2026-10-22
 
-### Early Emission Radio Warnings Compatibility (e.g., EnVy's Radio Warning)
+### 1. Fix Lingering Post-Blowout Weather FX & Immediate Clock Realignment (`rtz_clock.script`)
+- **Root Cause (Weather lasting 6x too long after blowout)**:
+  - In vanilla Anomaly, `CSurgeManager:end_surge()` and `CPsiStormManager:finish()` do not stop the weather effect (`level.stop_weather_fx()` is commented out or gated behind `manual/time_forwarded`). The blowout weather effect (`fx_blowout_day.ltx`) spans 50 in-game minutes. In vanilla Anomaly at 6x speed, the remaining 13 in-game minutes take only ~2 real minutes to dissipate. In RTZ at 1:1 speed (and during ahead-of-wall-clock catch-up holds), those remaining minutes took **13 to 30+ real minutes**, leaving the sky dark, stormy, and red long after the sirens and blowout wave had already finished.
+- **Fix**: Wrapped `CSurgeManager.end_surge` and `CPsiStormManager.finish` to immediately call `level.stop_weather_fx()`, trigger `level_weathers:forced_weather_change()` to restore live real-world weather, lock `time_factor` back to `1.0`, and realign the clock with real wall-clock time via `sync_to_real_time(true)` (with vitals safeguarded).
+
+### 2. Complete & Verified Russian Localization (`gamedata/configs/text/rus/ui_mcm_rtz.xml`)
+- Fixed character encoding corruption in `ui_mcm_rtz.xml` where newly added MCM strings appeared as question marks (`????`) or fallback English.
+- Fully translated and verified all 77 MCM string entries in `windows-1251` (headers, options, descriptions, comfort indicators, rest notifications, and weather cycle names).
+
+### 3. Early Emission Radio Warnings Compatibility (e.g., EnVy's Radio Warning)
 - Documented and verified early radio emission warning behavior: mods such as **EnVy's Emission Radio Warning** trigger advance announcements 5–8 in-game minutes ahead of an emission. At vanilla 6x speed, this is 50–80 real seconds, whereas at RTZ's 1:1 real-time flow, the arrival window spans a full **5 to 8 real minutes**.
 - Maintained all engine and manager safeguards introduced in `rtz_clock.script` so the 5–8 minute advance window is never prematurely cancelled by `time_forwarded`, drift checks, or `diff_sec > surge_time` skips.
 
