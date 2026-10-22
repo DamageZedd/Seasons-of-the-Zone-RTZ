@@ -2,22 +2,23 @@
 
 ## [1.0.2] - 2026-10-22
 
-### Added
-- **Hunger & Thirst Mode Selector (`vitals_mode` in `rtz_mcm.script`, `rtz_clock.script`)**:
-  - Added a 3-way MCM option for Hunger and Thirst:
-    - `0` = **Vanilla Speed (6x)** *(Default)*: Hunger and Thirst drain at vanilla Anomaly real-time speed.
-    - `1` = **Real-Time Speed (1:1)**: Hunger and Thirst drain 6x slower in real time, matching the 1:1 clock.
-    - `2` = **Disabled (No Eat / Drink)**: Locks `db.actor.satiety = 1.0` and `last_drink = 0` so the protagonist never needs to eat or drink.
+### 1. W.P.W.M. (`UmYeahNo`) `check_day_plan` Delegation & Credit
+- **`rtz_weather.script`**: Updated the `WeatherManager.check_day_plan` hook so that whenever `self.pre_blowout_period or self.weather_fx` is set, it calls `return org_check_day_plan(self)` directly instead of duplicating the emission block—automatically inheriting any future W.P.W.M. fixes.
+- **`README.md` & `CHANGELOG.md`**: Added **W.P.W.M. (Weighted Probability Weather Manager) by `UmYeahNo`** to the Credits.
 
-### Fixed
-- **1:1 Medkit / Booster Healing & Passive Recovery Fix (`fix_boosters_and_effects` in `rtz_clock.script`)**:
-  - Fixed the X-Ray Engine C++ quirk where consumable boosters (`boost_time`) count down in real seconds while multiplying `boost_health_restore`, `boost_power_restore`, `boost_radiation_restore`, and `boost_bleeding_restore` by `level.get_time_factor()` (which caused medkits and drugs to only heal 1/6th of their intended value at `time_factor = 1.0`).
-  - Compensated passive `[actor_condition]` rates (`psy_health_v`, `alcohol_v`, and `wound_incarnation_v`) so passive psy recovery, vodka drunkenness decay, and natural wound clotting progress at vanilla real-time speed.
-- **Anomaly Camera Shake & Psy Recovery Duration Fix (`rtz_clock.script`)**:
-  - Patched the hardcoded `local time_factor = 6` upvalue inside Demonized's **Dynamic Anomalies Overhaul (DAO) / Arrival** (`drx_da_main.script`) and **Perk-Based Artefacts** (`perk_based_artefacts.script`) with a monotonic real-time `get_time_elapsed` clock so gravitational anomaly camera shakes (`earthquake_40.anm`) and timed effects expire in 1 real second instead of lasting 6x too long.
-  - Hooked `arszi_psy.get_psy_health_regeneration` so psy-health regenerates at vanilla real-time speed when running at `1:1` time factor.
-- **W.P.W.M. `check_day_plan` Emission Guard Delegation & Credits (`rtz_weather.script`, `README.md`)**:
-  - Updated the `WeatherManager.check_day_plan` hook to delegate directly to `org_check_day_plan(self)` while `pre_blowout_period` or `weather_fx` is set, and added **W.P.W.M. (`UmYeahNo`)** to the credits per author feedback.
+### 2. Hunger & Thirst Mode MCM Selector (`vitals_mode`)
+- **`rtz_mcm.script` & `rtz_clock.script`**: Added a 3-way **Hunger & Thirst Mode** dropdown in MCM (`ui_mcm_rtz_vitals_mode` in `ui_mcm_rtz.xml`):
+  - **`Vanilla Speed (6x)`** *(Default)*: Hunger and Thirst drain at vanilla Anomaly real-time speed.
+  - **`Real-Time Speed (1:1)`**: Hunger and Thirst drain 6x slower in real time, matching the 1:1 clock (`drink_chk = 300` in-game seconds = 5 real minutes per tick, and C++ `satiety_v` runs unscaled at `1:1`).
+  - **`Disabled (No Eat / Drink)`**: Locks `db.actor.satiety = 1.0` and keeps `actor_status_thirst` `last_drink = 0` so the protagonist never needs to eat or drink.
+
+### 3. 1:1 Medkit / Booster Healing & Passive Recovery Fix (`fix_boosters_and_effects`)
+- **Root Cause**: In X-Ray Engine C++ (`CActorCondition::UpdateCondition()`), consumable boosters (`boost_time`) count down in **real seconds** (`Device.fTimeDelta`), while `boost_health_restore`, `boost_power_restore`, `boost_radiation_restore`, and `boost_bleeding_restore` are multiplied by `Device.fTimeDelta * level.get_time_factor()`—causing medkits and drugs to only heal **1/6th** of their intended amount at `time_factor = 1.0`.
+- **Fix (`rtz_clock.script`)**: Tracks active consumable boosters on `actor_on_item_use` over their exact `boost_time` window and applies the missing `(6.0 - cur_tf) * dt_real` restoration every `100ms` (along with passive C++ `psy_health_v`, `alcohol_v`, and `wound_incarnation_v` recovery).
+
+### 4. Anomaly Camera Shake & Psy Recovery Duration Fix
+- **Root Cause**: Demonized's **Dynamic Anomalies Overhaul (DAO) / Arrival** (`drx_da_main.script`) hardcodes `local time_factor = 6` inside its local `get_time_elapsed()` function (`get_game_time():diffSec(get_start_time()) / time_factor`). At `time_factor = 1.0`, `get_time_elapsed()` advances 6x slower than real time, causing the 1-second gravitational anomaly camera shake (`earthquake_40.anm`) to last 6x too long.
+- **Fix (`rtz_clock.script`)**: Non-destructively patches the `get_time_elapsed` upvalue in `drx_da_main` and `perk_based_artefacts` with a monotonic real-time clock (advancing `1.0s` per real second and immune to clock sync jumps), clamps any stale `timed_effects` timers, and scales `arszi_psy.get_psy_health_regeneration` so psy recovery runs at vanilla real-time speed.
 
 ---
 
