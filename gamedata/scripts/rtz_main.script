@@ -15,7 +15,7 @@ function actor_on_first_update()
         return
     end
 
-    printf_rtz("Initializing Real Time Zone (RTZ) v1.0.2...")
+    printf_rtz("Initializing Real Time Zone (RTZ) v1.0.3...")
 
     if rtz_clock and rtz_clock.init then
         rtz_clock.init()

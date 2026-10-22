@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3] - 2026-10-22
+
+### Early Emission Radio Warnings Compatibility (e.g., EnVy's Radio Warning)
+- Documented and verified early radio emission warning behavior: mods such as **EnVy's Emission Radio Warning** trigger advance announcements 5–8 in-game minutes ahead of an emission. At vanilla 6x speed, this is 50–80 real seconds, whereas at RTZ's 1:1 real-time flow, the arrival window spans a full **5 to 8 real minutes**.
+- Maintained all engine and manager safeguards introduced in `rtz_clock.script` so the 5–8 minute advance window is never prematurely cancelled by `time_forwarded`, drift checks, or `diff_sec > surge_time` skips.
+
+---
+
 ## [1.0.2] - 2026-10-22
 
 ### 1. W.P.W.M. (`UmYeahNo`) `check_day_plan` Delegation & Credit
