@@ -33,6 +33,7 @@ local active_boosters = {}
 local rtz_elapsed_anchor = nil
 local rtz_elapsed_start_tg = nil
 local orig_drx_get_time_elapsed = nil
+local orig_pba_get_time_elapsed = nil
 
 local function printf_rtz(fmt, ...)
     printf("[RTZ Clock] " .. fmt, ...)
@@ -412,6 +413,15 @@ local function rtz_drx_get_time_elapsed()
     return get_rtz_monotonic_elapsed()
 end
 
+local function rtz_pba_get_time_elapsed()
+    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("fix_boosters_and_effects") then
+        if orig_pba_get_time_elapsed then
+            return orig_pba_get_time_elapsed()
+        end
+    end
+    return get_rtz_monotonic_elapsed()
+end
+
 --- Patches Demonized's DAO (`drx_da_main`), PBA (`perk_based_artefacts`), and `arszi_psy` so anomaly camera
 --- shakes (`earthquake_40.anm`), timed effects, and psy recovery run at 1:1 real-time speed
 local function patch_external_time_elapsed_mods()
@@ -440,13 +450,14 @@ local function patch_external_time_elapsed_mods()
         end
 
         -- 2. Patch Perk-Based Artefacts (perk_based_artefacts)
-        if perk_based_artefacts then
-            if perk_based_artefacts.actor_on_update then
-                local cur_fn = get_upvalue_by_name(perk_based_artefacts.actor_on_update, "get_time_elapsed")
-                if cur_fn then
-                    local cur_tf = (level and level.get_time_factor and level.get_time_factor()) or 1.0
-                    set_upvalue_by_name(cur_fn, "time_factor", cur_tf)
-                end
+        -- Swap its get_time_elapsed upvalue with the monotonic real-time clock (same as DAO) so time_elapsed
+        -- advances strictly 1.0s per real second and never jumps when time_factor changes (protecting Lucifer
+        -- degradation rate and timed cooldowns across emissions and catch-up holds).
+        if perk_based_artefacts and perk_based_artefacts.actor_on_update then
+            local cur_fn = get_upvalue_by_name(perk_based_artefacts.actor_on_update, "get_time_elapsed")
+            if cur_fn and cur_fn ~= rtz_pba_get_time_elapsed then
+                orig_pba_get_time_elapsed = cur_fn
+                set_upvalue_by_name(perk_based_artefacts.actor_on_update, "get_time_elapsed", rtz_pba_get_time_elapsed)
             end
         end
 

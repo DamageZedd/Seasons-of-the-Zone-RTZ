@@ -11,9 +11,19 @@
 - Fixed character encoding corruption in `ui_mcm_rtz.xml` where newly added MCM strings appeared as question marks (`????`) or fallback English.
 - Fully translated and verified all 77 MCM string entries in `windows-1251` (headers, options, descriptions, comfort indicators, rest notifications, and weather cycle names).
 
-### 3. Early Emission Radio Warnings Compatibility (e.g., EnVy's Radio Warning)
-- Documented and verified early radio emission warning behavior: mods such as **EnVy's Emission Radio Warning** trigger advance announcements 5–8 in-game minutes ahead of an emission. At vanilla 6x speed, this is 50–80 real seconds, whereas at RTZ's 1:1 real-time flow, the arrival window spans a full **5 to 8 real minutes**.
-- Maintained all engine and manager safeguards introduced in `rtz_clock.script` so the 5–8 minute advance window is never prematurely cancelled by `time_forwarded`, drift checks, or `diff_sec > surge_time` skips.
+### 3. Perk-Based Artefacts (PBA) Monotonic Clock Upvalue Swap (`rtz_clock.script`)
+- **Root Cause**: PBA (G.A.M.M.A. Artefacts Reinvention) counts elapsed time as game seconds divided by its `time_factor` local. RTZ previously updated that local to the live time factor, which caused PBA's clock to jump tenfold or more each time `time_factor` changed (e.g. 10 during emissions, 0.1 during catch-up). Because the Lucifer artefact degrades by `rate * time_factor * (time_elapsed - saved_time_elapsed)`, a single jump cost Lucifer most or all of its condition, while cooldowns and timed effects set during catch-up landed 10x further out and stuck.
+- **Fix**: Replaced mutating PBA's `time_factor` upvalue with the monotonic real-time clock `rtz_pba_get_time_elapsed` (swapping `get_time_elapsed` in `perk_based_artefacts.actor_on_update`). Time elapsed now advances strictly 1.0s per real second and is immune to time factor changes (Issue #2).
+
+### 4. Seasons 2.11.0 `[hourly]` 24-Hour Freshness Check (`rtz_weather.script`)
+- Added `hourly_fresh(ini)` verifying that `season_weather.ltx`'s `[hourly]` section is within 24 hours of its `start` timestamp. If the hourly data is older than 24 hours (e.g. launching from MO2 without `play.bat` or during offline play), RTZ cleanly falls back to the date-keyed daily `[forecast]` instead of displaying yesterday's sky for the current hour (Issue #2).
+
+### 5. Offline A-Life Speed Overrides for 7 Standalone Creature Sections (`mod_system_rtz_alife.ltx`)
+- Applied 6x DLTX overrides to `m_rat_e`, `m_tushkano_e`, `m_borya_e` (`18.0`), `rotan` (`15.0`), `gigant_jumper` (`12.0`), `m_bibliotekar_e` (`51.0`), and `poltergeist_build` (`27.0`), which define their own `going_speed` and did not inherit the `[monster_base]` override, ensuring their offline squads travel at full vanilla real-world speed (Issue #2).
+
+### 6. Early Emission Radio Warnings Compatibility (e.g., EnVy's Radio Warning)
+- Documented and verified early radio emission warning behavior: mods such as **EnVy's Emission Radio Warning** trigger advance announcements 5-8 in-game minutes ahead of an emission. At vanilla 6x speed, this is 50-80 real seconds, whereas at RTZ's 1:1 real-time flow, the arrival window spans a full **5 to 8 real minutes**.
+- Maintained all engine and manager safeguards introduced in `rtz_clock.script` so the 5-8 minute advance window is never prematurely cancelled by `time_forwarded`, drift checks, or `diff_sec > surge_time` skips.
 
 ---
 

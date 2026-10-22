@@ -24,6 +24,17 @@ local function get_inis()
     return cached_rtz_ini, cached_sotz_ini
 end
 
+--- Checks whether Seasons of the Zone's `[hourly]` section is within 24 hours of its `start` timestamp
+local function hourly_fresh(ini)
+    if not ini or not ini.section_exist or not ini:section_exist("hourly") then return false end
+    local raw_start = ini:r_string_ex("hourly", "start") or ""
+    local Y, M, D, h, m = raw_start:match("^(%d+)%-(%d+)%-(%d+)T(%d+):(%d+)")
+    if not Y then return false end
+    local start_ts = os.time({year = tonumber(Y), month = tonumber(M), day = tonumber(D), hour = tonumber(h), min = tonumber(m)})
+    local age = os.time() - start_ts
+    return age >= 0 and age < 86400
+end
+
 --- Normalizes a weather cycle name against the active WeatherManager's presets
 local function normalize_cycle(mgr, cycle)
     if not cycle or not mgr or not mgr.presets then return nil end
@@ -127,7 +138,8 @@ function get_real_cycle(target_hour)
     local rtz_ini, sotz_ini = get_inis()
 
     -- 1. Check Seasons of the Zone's season_weather.ltx [hourly] first (native in Seasons 2.11.0+, mapped to PC clock)
-    if sotz_ini and sotz_ini:section_exist("hourly") then
+    -- Only use [hourly] if it was generated within the last 24 hours; otherwise fall back to date-keyed [forecast]
+    if sotz_ini and hourly_fresh(sotz_ini) then
         local cycle = sotz_ini:r_string_ex("hourly", tostring(cur_h))
                    or sotz_ini:r_string_ex("hourly", "h" .. tostring(cur_h))
         if cycle and cycle ~= "" then
