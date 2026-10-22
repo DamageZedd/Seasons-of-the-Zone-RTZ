@@ -75,6 +75,42 @@
 	<string id="rtz_vitals_disabled">
 		<text>Disabled (No Eat / Drink)</text>
 	</string>
+	<string id="ui_mcm_rtz_emission_frequency_mode">
+		<text>Emission &amp; Psi-Storm Frequency</text>
+	</string>
+	<string id="ui_mcm_rtz_emission_frequency_mode_desc">
+		<text>Controls how often Emissions and Psi-Storms occur in real time:\n- Vanilla Scaled (2-4 Hours): Scales Anomaly's emission frequency setting to real time.\n- 6-12 Hours: Once every 6 to 12 real hours.\n- 12-24 Hours: Once every 12 to 24 real hours.\n- 1-2 Days: Once every 24 to 48 real hours.\n- 2-4 Days: Once every 48 to 96 real hours.</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_vanilla">
+		<text>Vanilla Scaled (2-4 Hours)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_6_12h">
+		<text>6-12 Hours (Real Time)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_12_24h">
+		<text>12-24 Hours (Real Time)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_1_2d">
+		<text>1-2 Days (24-48 Hours)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_2_4d">
+		<text>2-4 Days (48-96 Hours)</text>
+	</string>
+	<string id="rtz_emiss_vanilla">
+		<text>Vanilla Scaled (2-4 Hours)</text>
+	</string>
+	<string id="rtz_emiss_6_12h">
+		<text>6-12 Hours (Real Time)</text>
+	</string>
+	<string id="rtz_emiss_12_24h">
+		<text>12-24 Hours (Real Time)</text>
+	</string>
+	<string id="rtz_emiss_1_2d">
+		<text>1-2 Days (24-48 Hours)</text>
+	</string>
+	<string id="rtz_emiss_2_4d">
+		<text>2-4 Days (48-96 Hours)</text>
+	</string>
 	<string id="ui_mcm_rtz_fix_boosters_and_effects">
 		<text>1:1 Medkit Healing &amp; Anomaly Shake Fix</text>
 	</string>

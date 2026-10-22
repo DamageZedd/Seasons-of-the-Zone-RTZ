@@ -168,16 +168,26 @@ function restore_vitals_exact(snap)
         local now_gt = game and game.get_game_time and game.get_game_time() or nil
 
         -- 1. Preserve Surge & Psi-Storm elapsed progress across clock sync (only when not currently active)
+        -- Also align inited_time to now_gt and clear time_forwarded so CSurgeManager:update()/CPsiStormManager:update()
+        -- never falsely trigger skip_surge()/skip_psi_storm() on first_update or postpone imminent radio-announced emissions
         if now_gt and surge_manager and surge_manager.get_surge_manager then
             local sm = surge_manager.get_surge_manager()
-            if sm and not sm.started and snap.surge_elapsed then
-                sm.last_surge_time = make_offset_ctime(now_gt, snap.surge_elapsed)
+            if sm and not sm.started then
+                if snap.surge_elapsed then
+                    sm.last_surge_time = make_offset_ctime(now_gt, snap.surge_elapsed)
+                end
+                sm.inited_time = now_gt
+                sm.time_forwarded = false
             end
         end
         if now_gt and psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
             local pm = psi_storm_manager.get_psi_storm_manager()
-            if pm and not pm.started and snap.psi_elapsed then
-                pm.last_psi_storm_time = make_offset_ctime(now_gt, snap.psi_elapsed)
+            if pm and not pm.started then
+                if snap.psi_elapsed then
+                    pm.last_psi_storm_time = make_offset_ctime(now_gt, snap.psi_elapsed)
+                end
+                pm.inited_time = now_gt
+                pm.time_forwarded = false
             end
         end
 
@@ -516,6 +526,25 @@ local function sync_thirst_and_sleep_intervals()
             local target_sleep_chk = math.max(10, math.floor(base_sleep_chk * ratio + 0.5))
             set_upvalue_by_name(actor_status_sleep.actor_on_update, "sleep_chk", target_sleep_chk)
         end
+
+        -- Keep SurgeManager & PsiStormManager `inited_time` aligned and `time_forwarded = false` while idle
+        if enabled and game and game.get_game_time then
+            local now_gt = game.get_game_time()
+            if surge_manager and surge_manager.get_surge_manager then
+                local sm = surge_manager.get_surge_manager()
+                if sm and not sm.started then
+                    sm.inited_time = now_gt
+                    sm.time_forwarded = false
+                end
+            end
+            if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
+                local pm = psi_storm_manager.get_psi_storm_manager()
+                if pm and not pm.started then
+                    pm.inited_time = now_gt
+                    pm.time_forwarded = false
+                end
+            end
+        end
     end)
 end
 
@@ -619,23 +648,91 @@ local function on_smart_try_respawn(smart, flags)
     end
 end
 
---- Scales pre-existing Surge & Psi-Storm `_delta` once on session load if unscaled
-local function scale_initial_emission_deltas()
+--- Returns real-time (min_sec, max_sec) bounds for Emissions / Psi-Storms based on `emission_frequency_mode`
+local function get_emission_interval_bounds(is_psi_storm)
+    local mode = (rtz_mcm.get_config("enabled") and tonumber(rtz_mcm.get_config("emission_frequency_mode"))) or 0
+    if mode == 1 then
+        return 6 * 3600, 12 * 3600   -- 6-12 Real Hours
+    elseif mode == 2 then
+        return 12 * 3600, 24 * 3600  -- 12-24 Real Hours
+    elseif mode == 3 then
+        return 24 * 3600, 48 * 3600  -- 1-2 Real Days (24-48 Hours)
+    elseif mode == 4 then
+        return 48 * 3600, 96 * 3600  -- 2-4 Real Days (48-96 Hours)
+    end
+
+    -- mode == 0: Vanilla Anomaly setting scaled to real time (~2-4 Real Hours by default)
+    local opt_key = is_psi_storm and "alife/event/psi_storm_frequency" or "alife/event/emission_frequency"
+    local freq = (ui_options and ui_options.get and tonumber(ui_options.get(opt_key))) or 24
+    local ratio = get_vanilla_scale_ratio()
+    local min_s = math.max(600, math.floor(math.floor(freq / 2) * 3600 * ratio + 0.5))
+    local max_s = math.max(min_s + 600, math.floor(freq * 3600 * ratio + 0.5))
+    return min_s, max_s
+end
+
+--- Rolls a real-time `_delta` for Surge or Psi-Storm and ensures at least 30 real minutes separation between the two
+local function roll_emission_delta(is_psi_storm, mgr, other_mgr)
+    if not mgr then return end
+    local min_s, max_s = get_emission_interval_bounds(is_psi_storm)
+    local delta = math.random(min_s, max_s)
     pcall(function()
-        local ratio = get_vanilla_scale_ratio()
-        if ratio >= 0.99 then return end
-        if surge_manager and surge_manager.get_surge_manager then
-            local sm = surge_manager.get_surge_manager()
-            if sm and sm._delta and not sm.__rtz_unscaled_delta and sm._delta > 21600 then
-                sm.__rtz_unscaled_delta = sm._delta
-                sm._delta = math.max(600, math.floor(sm.__rtz_unscaled_delta * ratio + 0.5))
+        local g_time = game and game.get_game_time and game.get_game_time()
+        local my_last = is_psi_storm and mgr.last_psi_storm_time or mgr.last_surge_time
+        local other_last = other_mgr and (is_psi_storm and other_mgr.last_surge_time or other_mgr.last_psi_storm_time)
+        if g_time and my_last and other_last and other_mgr._delta then
+            local my_rem = delta - g_time:diffSec(my_last)
+            local other_rem = other_mgr._delta - g_time:diffSec(other_last)
+            if math.abs(my_rem - other_rem) < 1800 then
+                delta = delta + 1800
             end
         end
-        if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
-            local pm = psi_storm_manager.get_psi_storm_manager()
-            if pm and pm._delta and not pm.__rtz_unscaled_delta and pm._delta > 21600 then
-                pm.__rtz_unscaled_delta = pm._delta
-                pm._delta = math.max(600, math.floor(pm.__rtz_unscaled_delta * ratio + 0.5))
+    end)
+    mgr._delta = delta
+    mgr.__rtz_mode = (rtz_mcm.get_config("enabled") and tonumber(rtz_mcm.get_config("emission_frequency_mode"))) or 0
+end
+
+--- Scales or updates Surge & Psi-Storm `_delta` and sanitizes `inited_time` on session load or MCM option change
+function scale_initial_emission_deltas()
+    pcall(function()
+        if not rtz_mcm.get_config("enabled") then return end
+        local now_gt = game and game.get_game_time and game.get_game_time() or nil
+        local sm = surge_manager and surge_manager.get_surge_manager and surge_manager.get_surge_manager()
+        local pm = psi_storm_manager and psi_storm_manager.get_psi_storm_manager and psi_storm_manager.get_psi_storm_manager()
+
+        if sm and not sm.started then
+            if now_gt then
+                sm.inited_time = now_gt
+            end
+            sm.time_forwarded = false
+            local min_s, max_s = get_emission_interval_bounds(false)
+            local elapsed = (now_gt and sm.last_surge_time and now_gt.diffSec) and now_gt:diffSec(sm.last_surge_time) or 0
+            if elapsed < 0 or (sm._delta and elapsed >= sm._delta) then
+                -- Sanitize stale/corrupted last_surge_time from pre-fix saves so radio mods do not false-alarm
+                if now_gt then sm.last_surge_time = now_gt end
+                roll_emission_delta(false, sm, pm)
+            elseif not sm._delta or sm._delta < min_s or sm._delta > (max_s + 3600) then
+                roll_emission_delta(false, sm, pm)
+                if elapsed >= sm._delta and now_gt then
+                    sm.last_surge_time = now_gt
+                end
+            end
+        end
+
+        if pm and not pm.started then
+            if now_gt then
+                pm.inited_time = now_gt
+            end
+            pm.time_forwarded = false
+            local min_s, max_s = get_emission_interval_bounds(true)
+            local elapsed = (now_gt and pm.last_psi_storm_time and now_gt.diffSec) and now_gt:diffSec(pm.last_psi_storm_time) or 0
+            if elapsed < 0 or (pm._delta and elapsed >= pm._delta) then
+                if now_gt then pm.last_psi_storm_time = now_gt end
+                roll_emission_delta(true, pm, sm)
+            elseif not pm._delta or pm._delta < min_s or pm._delta > (max_s + 3600) then
+                roll_emission_delta(true, pm, sm)
+                if elapsed >= pm._delta and now_gt then
+                    pm.last_psi_storm_time = now_gt
+                end
             end
         end
     end)
@@ -649,43 +746,63 @@ local function install_alife_hooks()
     RegisterScriptCallback("squad_on_update", on_squad_update)
     RegisterScriptCallback("on_try_respawn", on_smart_try_respawn)
     RegisterScriptCallback("actor_on_item_use", on_actor_item_use)
+    RegisterScriptCallback("mcm_option_change", scale_initial_emission_deltas)
 
-    -- Wrap CSurgeManager.new_surge_time & CPsiStormManager.new_psi_storm_time so _delta is scaled once per new roll
-    -- while keeping the 1-hour spacing check between emissions and psi-storms intact in unscaled vanilla seconds
-    if surge_manager and surge_manager.CSurgeManager and surge_manager.CSurgeManager.new_surge_time then
-        local org_new_surge_time = surge_manager.CSurgeManager.new_surge_time
-        surge_manager.CSurgeManager.new_surge_time = function(self, reset)
-            local pm = psi_storm_manager and psi_storm_manager.get_psi_storm_manager and psi_storm_manager.get_psi_storm_manager()
-            if pm and pm.__rtz_unscaled_delta then
-                pm._delta = pm.__rtz_unscaled_delta
+    -- Wrap CSurgeManager.new_surge_time & CPsiStormManager.new_psi_storm_time to use RTZ real-time frequency bounds
+    if surge_manager and surge_manager.CSurgeManager then
+        if surge_manager.CSurgeManager.new_surge_time then
+            local org_new_surge_time = surge_manager.CSurgeManager.new_surge_time
+            surge_manager.CSurgeManager.new_surge_time = function(self, reset)
+                org_new_surge_time(self, reset)
+                if not rtz_mcm.get_config("enabled") then return end
+                local pm = psi_storm_manager and psi_storm_manager.get_psi_storm_manager and psi_storm_manager.get_psi_storm_manager()
+                roll_emission_delta(false, self, pm)
+                if not self.started and game and game.get_game_time then
+                    self.inited_time = game.get_game_time()
+                end
             end
-            org_new_surge_time(self, reset)
-            local ratio = get_vanilla_scale_ratio()
-            if self._delta then
-                self.__rtz_unscaled_delta = self._delta
-                self._delta = math.max(600, math.floor(self.__rtz_unscaled_delta * ratio + 0.5))
-            end
-            if pm and pm.__rtz_unscaled_delta then
-                pm._delta = math.max(600, math.floor(pm.__rtz_unscaled_delta * ratio + 0.5))
+        end
+
+        -- Wrap CSurgeManager.start so a naturally triggered emission at 1:1 time_factor aligns inited_time to now
+        -- and is never falsely skipped by `diff_sec + 6 > self.surge_time` after radio/pre-surge warnings play
+        if surge_manager.CSurgeManager.start then
+            local org_surge_start = surge_manager.CSurgeManager.start
+            surge_manager.CSurgeManager.start = function(self, manual)
+                if rtz_mcm.get_config("enabled") and not self.started then
+                    if game and game.get_game_time then
+                        self.inited_time = game.get_game_time()
+                    end
+                    return org_surge_start(self, true)
+                end
+                return org_surge_start(self, manual)
             end
         end
     end
 
-    if psi_storm_manager and psi_storm_manager.CPsiStormManager and psi_storm_manager.CPsiStormManager.new_psi_storm_time then
-        local org_new_psi_storm_time = psi_storm_manager.CPsiStormManager.new_psi_storm_time
-        psi_storm_manager.CPsiStormManager.new_psi_storm_time = function(self, reset)
-            local sm = surge_manager and surge_manager.get_surge_manager and surge_manager.get_surge_manager()
-            if sm and sm.__rtz_unscaled_delta then
-                sm._delta = sm.__rtz_unscaled_delta
+    if psi_storm_manager and psi_storm_manager.CPsiStormManager then
+        if psi_storm_manager.CPsiStormManager.new_psi_storm_time then
+            local org_new_psi_storm_time = psi_storm_manager.CPsiStormManager.new_psi_storm_time
+            psi_storm_manager.CPsiStormManager.new_psi_storm_time = function(self, reset)
+                org_new_psi_storm_time(self, reset)
+                if not rtz_mcm.get_config("enabled") then return end
+                local sm = surge_manager and surge_manager.get_surge_manager and surge_manager.get_surge_manager()
+                roll_emission_delta(true, self, sm)
+                if not self.started and game and game.get_game_time then
+                    self.inited_time = game.get_game_time()
+                end
             end
-            org_new_psi_storm_time(self, reset)
-            local ratio = get_vanilla_scale_ratio()
-            if self._delta then
-                self.__rtz_unscaled_delta = self._delta
-                self._delta = math.max(600, math.floor(self.__rtz_unscaled_delta * ratio + 0.5))
-            end
-            if sm and sm.__rtz_unscaled_delta then
-                sm._delta = math.max(600, math.floor(sm.__rtz_unscaled_delta * ratio + 0.5))
+        end
+
+        if psi_storm_manager.CPsiStormManager.start then
+            local org_psi_start = psi_storm_manager.CPsiStormManager.start
+            psi_storm_manager.CPsiStormManager.start = function(self, manual)
+                if rtz_mcm.get_config("enabled") and not self.started then
+                    if game and game.get_game_time then
+                        self.inited_time = game.get_game_time()
+                    end
+                    return org_psi_start(self, true)
+                end
+                return org_psi_start(self, manual)
             end
         end
     end

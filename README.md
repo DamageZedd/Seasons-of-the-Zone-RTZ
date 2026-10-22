@@ -56,6 +56,7 @@
 | **Safeguard Vitals on Time Jump** | `On` | Strictly preserves exact hunger, thirst, sleep, health, and emission progress across clock sync jumps. |
 | **Preserve Vanilla Vitals & A-Life Pacing (6x)** | `On` | Keeps Sleep, A-Life squad movement/respawns, and Emissions running at vanilla `6.0x` real-time speed. |
 | **Hunger & Thirst Mode** | `Vanilla (6x)` | Choose between **Vanilla Speed (6x)**, **Real-Time Speed (1:1)**, or **Disabled (No Eat / Drink)**. |
+| **Emission & Psi-Storm Frequency** | `Vanilla (2-4h)` | Choose between **Vanilla Scaled (2-4 Hours)**, **6-12 Hours**, **12-24 Hours**, **1-2 Days (24-48h)**, or **2-4 Days (48-96h)** in real time. |
 | **1:1 Medkit Healing & Anomaly Shake Fix** | `On` | Fixes medkits/boosters only healing 1/6th at 1:1 time factor and fixes DAO/Arrival anomaly camera shake & psy recovery lasting 6x too long. |
 | **Sync Weather with Real Location** | `On` | Drives weather transitions from Open-Meteo for your *Seasons of the Zone* location. |
 | **Weather Check Interval** | `5 min` | How often to check for hourly real-world weather transitions (`1–30 min`). |

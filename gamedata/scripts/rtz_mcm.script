@@ -11,6 +11,7 @@ local defaults = {
     ["safeguard_vitals"]           = true,
     ["vanilla_vitals_alife_scale"] = true,
     ["vitals_mode"]                = 0,
+    ["emission_frequency_mode"]    = 0,
     ["fix_boosters_and_effects"]   = true,
     ["enable_real_weather"]        = true,
     ["weather_sync_interval"]      = 5,
@@ -59,6 +60,13 @@ function on_mcm_load()
                 { 0, "rtz_vitals_vanilla" },
                 { 1, "rtz_vitals_realtime" },
                 { 2, "rtz_vitals_disabled" },
+            }},
+            { id = "emission_frequency_mode", type = "list", val = 2, def = defaults["emission_frequency_mode"], content = {
+                { 0, "rtz_emiss_vanilla" },
+                { 1, "rtz_emiss_6_12h" },
+                { 2, "rtz_emiss_12_24h" },
+                { 3, "rtz_emiss_1_2d" },
+                { 4, "rtz_emiss_2_4d" },
             }},
             { id = "fix_boosters_and_effects", type = "check", val = 1, def = defaults["fix_boosters_and_effects"] },
 

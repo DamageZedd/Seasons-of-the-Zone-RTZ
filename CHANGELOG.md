@@ -20,7 +20,19 @@
 - **Root Cause**: Demonized's **Dynamic Anomalies Overhaul (DAO) / Arrival** (`drx_da_main.script`) hardcodes `local time_factor = 6` inside its local `get_time_elapsed()` function (`get_game_time():diffSec(get_start_time()) / time_factor`). At `time_factor = 1.0`, `get_time_elapsed()` advances 6x slower than real time, causing the 1-second gravitational anomaly camera shake (`earthquake_40.anm`) to last 6x too long.
 - **Fix (`rtz_clock.script`)**: Non-destructively patches the `get_time_elapsed` upvalue in `drx_da_main` and `perk_based_artefacts` with a monotonic real-time clock (advancing `1.0s` per real second and immune to clock sync jumps), clamps any stale `timed_effects` timers, and scales `arszi_psy.get_psy_health_regeneration` so psy recovery runs at vanilla real-time speed.
 
-### 5. *Seasons of the Zone 2.11.0* Integration & `xray-monolith` Engine Fixes (Issue #1 by `@devinhorowitz` / `WindWalker`)
+### 5. Emission Radio Announcement False-Alarm Fix & Custom Real-Time Frequency MCM Selector (`emission_frequency_mode`)
+- **Root Cause ("Emission incoming" radio announcement with no emission)**:
+  1. On save load (`load_state` -> `initialize()`), `CSurgeManager` and `CPsiStormManager` initialized `self.inited_time` to the pre-sync save timestamp. When RTZ synced the clock forward on `actor_on_first_update`, `last_surge_time` was shifted forward, but `inited_time` remained at the old pre-sync time. On `CSurgeManager:update()`'s `first_update`, `diff_sec = game.get_game_time():diffSec(self.inited_time) / level.get_time_factor()` exceeded `self.surge_time` (`222`s) even when `started == false`, triggering `self:skip_surge()` which overwrote `last_surge_time` back to the old pre-sync `inited_time + 222`—causing radio announcement mods ("Emission Announcements via Radio") and pre-blowout crows to fire immediately and then get silently cancelled by `start()`'s `diff_sec + 6 > self.surge_time` check or `time_forwarded` (`diff < 3600` pushing `_delta` back by 3 hours).
+- **Fix (`rtz_clock.script`)**:
+  - Aligns `inited_time` to `game.get_game_time()` and clears `time_forwarded = false` whenever `not started`, wraps `CSurgeManager.start` and `CPsiStormManager.start` so naturally triggered emissions at `1:1` time factor start cleanly at `diff_sec = 0` without falsely skipping, and sanitizes any pre-existing corrupted `last_surge_time` on load.
+- **New MCM Setting — Emission & Psi-Storm Frequency (`emission_frequency_mode` in `rtz_mcm.script` & `ui_mcm_rtz.xml`)**:
+  - **`Vanilla Scaled (2-4 Hours)`** *(Default)*: Scales Anomaly's emission frequency setting to real time.
+  - **`6-12 Hours (Real Time)`**: Rolls emissions and psi-storms every 6 to 12 real hours.
+  - **`12-24 Hours (Real Time)`**: Rolls emissions and psi-storms every 12 to 24 real hours.
+  - **`1-2 Days (24-48 Hours)`**: Rolls emissions and psi-storms every 1 to 2 real days.
+  - **`2-4 Days (48-96 Hours)`**: Rolls emissions and psi-storms every 2 to 4 real days.
+
+### 6. *Seasons of the Zone 2.11.0* Integration & `xray-monolith` Engine Fixes (Issue #1 by `@devinhorowitz` / `WindWalker`)
 - **Removed Shipped `rtz_weather.ltx` & Prioritized Seasons 2.11.0 `[hourly]` (`rtz_weather.script`)**:
   - Removed the static sample `gamedata/configs/rtz_weather.ltx` from the repository and release package so weather is never stuck on a static sample out of the box.
   - `get_real_cycle()` now reads *Seasons of the Zone 2.11.0+*'s `[hourly]` section in `season_weather.ltx` first (which maps the next 24 hours to the PC's wall clock), respects `sotz_api.weather_hold()` on remembrance days/anniversaries, and verifies `date == today` if an optional `rtz_weather.ltx` is present.
