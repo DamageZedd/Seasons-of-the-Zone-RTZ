@@ -7,8 +7,11 @@ GUI = nil
 is_resting = false
 local rest_start_tg = 0
 local last_rest_tick_tg = 0
+local initial_rest_fatigue = 0
 local current_rest_fatigue = 0
 local rest_source = "bed" -- "bed", "sleepbag", "campfire"
+local rest_forced = false
+local FORCED_LOCK_MS = 30000 -- 30s unskippable penalty window on exhaustion blackout (sleep_forced)
 local mus_vol_saved = nil
 local amb_vol_saved = nil
 local last_health = 1.0
@@ -132,11 +135,17 @@ function UIRtzRest:InitCallbacks()
     self:AddCallback("btn_wake", ui_events.BUTTON_CLICKED, self.OnButtonWake, self)
 end
 
+local function is_forced_lock_active()
+    return is_resting and rest_forced and (time_global() < rest_start_tg + FORCED_LOCK_MS)
+end
+
 function UIRtzRest:OnButtonWake()
+    if is_forced_lock_active() then return end
     stop_resting(false)
 end
 
 function UIRtzRest:Close()
+    if is_forced_lock_active() then return end
     stop_resting(false)
 end
 
@@ -144,6 +153,9 @@ function UIRtzRest:OnKeyboard(dik, keyboard_action)
     local res = CUIScriptWnd.OnKeyboard(self, dik, keyboard_action)
     if (res == false) and (keyboard_action == ui_events.WINDOW_KEY_PRESSED) then
         if dik == DIK_keys.DIK_ESCAPE or dik == DIK_keys.DIK_SPACE or dik == DIK_keys.DIK_RETURN then
+            if is_forced_lock_active() then
+                return true
+            end
             stop_resting(false)
             return true
         end
@@ -154,6 +166,10 @@ end
 function UIRtzRest:Update()
     CUIScriptWnd.Update(self)
     if not is_resting then return end
+
+    if self.btn_wake then
+        self.btn_wake:Show(not is_forced_lock_active())
+    end
 
     local real = os.date("*t")
     if real and self.time_text then
@@ -187,6 +203,17 @@ local function clear_sleep_infoportions()
     end
 end
 
+function restore_saved_volumes()
+    if mus_vol_saved then
+        exec_console_cmd("snd_volume_music " .. tostring(mus_vol_saved))
+        mus_vol_saved = nil
+    end
+    if amb_vol_saved then
+        exec_console_cmd("snd_volume_eff " .. tostring(amb_vol_saved))
+        amb_vol_saved = nil
+    end
+end
+
 function start_resting(source, force)
     if is_resting then return end
     if not db.actor then
@@ -194,37 +221,56 @@ function start_resting(source, force)
         return
     end
 
-    -- Check bleeding and radiation unless forced
-    if not force then
-        if db.actor.bleeding and db.actor.bleeding > 0.02 then
-            actor_menu.set_msg(1, game.translate_string("st_sleep_bleeding"), 4)
-            clear_sleep_infoportions()
-            return
-        end
-        if db.actor.radiation and db.actor.radiation > 0.05 then
-            actor_menu.set_msg(1, game.translate_string("st_sleep_irradiated"), 4)
-            clear_sleep_infoportions()
-            return
-        end
-    end
-
-    -- Check if actor is already fully rested and healthy
     local current_slp = get_actor_fatigue()
-    if current_slp < 150 and (db.actor.health or 1.0) >= 0.99 and not force then
-        actor_menu.set_msg(1, game.translate_string("st_rtz_awake"), 4)
-        clear_sleep_infoportions()
-        return
+    local is_forced = (force == true)
+
+    -- Respect GAMMA & Anomaly UISleep:TestAndShow conditions when not forced
+    if not is_forced then
+        local min_slp = (item_tent ~= nil) and 5000 or 1500
+        if current_slp < min_slp then
+            local msg_id = (item_tent ~= nil) and "st_sleep_awake" or "st_rtz_awake"
+            actor_menu.set_msg(1, game.translate_string(msg_id), 4)
+            clear_sleep_infoportions()
+            return
+        end
+
+        local bleeding = (db.actor.bleeding or 0) > 0
+        local radiation = (db.actor.radiation or 0) > 0
+        if bleeding or radiation then
+            if bleeding and radiation then
+                actor_menu.set_msg(1, game.translate_string("st_sleep_bleeding_irradiated"), 5)
+            elseif bleeding then
+                actor_menu.set_msg(1, game.translate_string("st_sleep_bleeding"), 4)
+            elseif radiation then
+                actor_menu.set_msg(1, game.translate_string("st_sleep_irradiated"), 4)
+            end
+            clear_sleep_infoportions()
+            return
+        end
+
+        if item_tent ~= nil then
+            local actor_hide = (GetEvent and GetEvent("current_safe_cover")) and true or false
+            if (not actor_hide) and item_tent.get_nearby_tent then
+                actor_hide = item_tent.get_nearby_tent(1.5)
+            end
+            if not actor_hide then
+                actor_menu.set_msg(1, game.translate_string("st_cant_sleep_find_shelter_mlr"), 4)
+                clear_sleep_infoportions()
+                return
+            end
+        end
     end
 
-    -- If resting purely for health while fatigue is < 150, give a small baseline so the rest bar progresses
     if current_slp < 150 then
         current_slp = 1500
     end
 
     is_resting = true
     rest_source = source or "bed"
+    rest_forced = is_forced
     rest_start_tg = time_global()
     last_rest_tick_tg = rest_start_tg
+    initial_rest_fatigue = current_slp
     current_rest_fatigue = current_slp
     last_health = db.actor.health or 1.0
 
@@ -257,6 +303,7 @@ end
 function stop_resting(interrupted)
     if not is_resting then return end
     is_resting = false
+    rest_forced = false
 
     -- Close GUI and unregister
     if GUI then
@@ -272,24 +319,18 @@ function stop_resting(interrupted)
     -- Restore effectors & volume
     level.remove_pp_effector(8888)
     level.remove_cam_effector(8889)
-
-    if mus_vol_saved then
-        exec_console_cmd("snd_volume_music " .. tostring(mus_vol_saved))
-        mus_vol_saved = nil
-    end
-    if amb_vol_saved then
-        exec_console_cmd("snd_volume_eff " .. tostring(amb_vol_saved))
-        amb_vol_saved = nil
-    end
+    restore_saved_volumes()
 
     clear_sleep_infoportions()
+
+    local end_fatigue = get_actor_fatigue()
 
     -- Notify player
     if interrupted then
         actor_menu.set_msg(1, game.translate_string("st_rtz_rest_interrupted"), 4)
     else
-        local current_slp = get_actor_fatigue()
-        if current_slp <= 150 then
+        if end_fatigue <= 150 then
+            end_fatigue = 0
             set_actor_fatigue(0)
             actor_menu.set_msg(1, game.translate_string("st_rtz_rest_fully_rested"), 4)
         else
@@ -301,13 +342,43 @@ function stop_resting(interrupted)
         end
     end
 
-    -- Signal completion with 0 hours while strictly guarding hunger & thirst from any third-party actor_on_sleep callbacks
+    -- Compute equivalent sleep hours (up to 8 hours for a full 8000 fatigue recovery)
+    -- so Body Health System (zzz_player_injuries) heals limbs and arszi_psy regenerates psy-health,
+    -- while guarding hunger, thirst, sleep fatigue, and surge_manager's forced_weather_change
+    local recovered = math.max(0, (initial_rest_fatigue or end_fatigue) - end_fatigue)
+    local equiv_hours = math.max(0, math.floor((recovered / 8000) * 8 + 0.5))
+
     local snap_sat = db.actor and db.actor.satiety or nil
     local snap_drk = (actor_status_thirst and actor_status_thirst.get_last_drink and actor_status_thirst.get_last_drink()) or nil
 
-    SendScriptCallback("actor_on_sleep", 0)
+    local wmgr = level_weathers and level_weathers.get_weather_manager and level_weathers.get_weather_manager()
+    local org_forced_weather_change = wmgr and wmgr.forced_weather_change
+    if wmgr and org_forced_weather_change then
+        wmgr.forced_weather_change = function() end
+    end
+
+    local sm = surge_manager and surge_manager.get_surge_manager and surge_manager.get_surge_manager()
+    local pm = psi_storm_manager and psi_storm_manager.get_psi_storm_manager and psi_storm_manager.get_psi_storm_manager()
+    local sm_tf = sm and sm.time_forwarded
+    local pm_tf = pm and pm.time_forwarded
+
+    if rtz_clock then
+        rtz_clock.is_in_sleep_callback = true
+    end
+
+    SendScriptCallback("actor_on_sleep", equiv_hours)
+
+    if rtz_clock then
+        rtz_clock.is_in_sleep_callback = false
+    end
+    if wmgr and org_forced_weather_change then
+        wmgr.forced_weather_change = org_forced_weather_change
+    end
+    if sm then sm.time_forwarded = sm_tf end
+    if pm then pm.time_forwarded = pm_tf end
 
     pcall(function()
+        set_actor_fatigue(end_fatigue)
         if db.actor and snap_sat ~= nil and db.actor.satiety ~= nil then
             db.actor.satiety = snap_sat
         end
@@ -323,7 +394,7 @@ function stop_resting(interrupted)
         end
     end)
 
-    printf_rtz("Finished rest, interrupted: %s", tostring(interrupted))
+    printf_rtz("Finished rest (equiv_hours=%d), interrupted: %s", equiv_hours, tostring(interrupted))
 end
 
 --- Frame-independent update loop during active rest
@@ -453,6 +524,16 @@ end
 
 function init()
     install_sleep_hooks()
+    RegisterScriptCallback("actor_on_net_destroy", restore_saved_volumes)
+    RegisterScriptCallback("on_before_level_changing", restore_saved_volumes)
+    if ui_main_menu and ui_main_menu.main_menu and ui_main_menu.main_menu.OnButton_quit_clicked and not ui_main_menu.main_menu.__rtz_quit_hooked then
+        local org_quit = ui_main_menu.main_menu.OnButton_quit_clicked
+        ui_main_menu.main_menu.OnButton_quit_clicked = function(self)
+            restore_saved_volumes()
+            return org_quit(self)
+        end
+        ui_main_menu.main_menu.__rtz_quit_hooked = true
+    end
 end
 
 function update()

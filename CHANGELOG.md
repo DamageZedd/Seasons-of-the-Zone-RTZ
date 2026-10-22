@@ -20,6 +20,31 @@
 - **Root Cause**: Demonized's **Dynamic Anomalies Overhaul (DAO) / Arrival** (`drx_da_main.script`) hardcodes `local time_factor = 6` inside its local `get_time_elapsed()` function (`get_game_time():diffSec(get_start_time()) / time_factor`). At `time_factor = 1.0`, `get_time_elapsed()` advances 6x slower than real time, causing the 1-second gravitational anomaly camera shake (`earthquake_40.anm`) to last 6x too long.
 - **Fix (`rtz_clock.script`)**: Non-destructively patches the `get_time_elapsed` upvalue in `drx_da_main` and `perk_based_artefacts` with a monotonic real-time clock (advancing `1.0s` per real second and immune to clock sync jumps), clamps any stale `timed_effects` timers, and scales `arszi_psy.get_psy_health_regeneration` so psy recovery runs at vanilla real-time speed.
 
+### 5. *Seasons of the Zone 2.11.0* Integration & `xray-monolith` Engine Fixes (Issue #1 by `@devinhorowitz` / `WindWalker`)
+- **Removed Shipped `rtz_weather.ltx` & Prioritized Seasons 2.11.0 `[hourly]` (`rtz_weather.script`)**:
+  - Removed the static sample `gamedata/configs/rtz_weather.ltx` from the repository and release package so weather is never stuck on a static sample out of the box.
+  - `get_real_cycle()` now reads *Seasons of the Zone 2.11.0+*'s `[hourly]` section in `season_weather.ltx` first (which maps the next 24 hours to the PC's wall clock), respects `sotz_api.weather_hold()` on remembrance days/anniversaries, and verifies `date == today` if an optional `rtz_weather.ltx` is present.
+- **Mapped `_tools/fetch_rtz_hourly.py` to PC Wall-Clock Hours**:
+  - Updated `_tools/fetch_rtz_hourly.py` to fetch UTC timestamps and map the next 24 hours to the PC's local wall-clock hours (`0..23`) so remote locations (e.g. Chornobyl while playing in US Eastern) match the weather happening at that exact moment.
+- **Ahead-of-Wall-Clock Catch-Up Hold (`rtz_clock.script`)**:
+  - When the in-game clock gets ahead of the PC's wall clock by up to 4 hours (e.g. after an emission running at `time_factor = 10` or Fair Fast Travel), `sync_to_real_time` no longer wraps around and jumps `+23` hours forward; instead, `enforce_time_factor` slows the game clock to `0.1x` until the wall clock catches up.
+- **Fixed `db.actor.bleeding` Setter Healing Wounds on Sync (`rtz_clock.script`)**:
+  - Removed `db.actor.bleeding = snap.bleeding` from `restore_vitals_exact()` (`script_game_object_script2.cpp` binds `.property("bleeding", GetBleeding, ChangeBleeding)` where `ChangeBleeding` shrinks wounds rather than assigning).
+- **Protected Active Emissions & Psi-Storms from Clock Sync (`rtz_clock.script`)**:
+  - `sync_to_real_time()` and the periodic drift check now skip syncing while `level.is_wfx_playing()`, `surge_manager.is_started()`, or `psi_storm_manager.is_started()` is true, and `restore_vitals_exact()` no longer forces `started = false` / `finished = true` directly on either manager.
+- **Once-Per-Roll Emission & Psi-Storm `_delta` Scaling (`rtz_clock.script`)**:
+  - Replaced per-second `_delta` rescaling with wrappers around `CSurgeManager.new_surge_time` and `CPsiStormManager.new_psi_storm_time` that preserve their 1-hour mutual spacing check in unscaled vanilla seconds and scale `_delta` once per roll.
+- **Offline Squad `going_speed` on Creature Sections (`mod_system_rtz_alife.ltx`)**:
+  - Applied 6x `going_speed` and `current_level_going_speed` DLTX overrides directly to `[stalker]`, `[monster_base]`, and stock monster sections (`alife_online_offline_group.cpp` copies `m_fGoingSpeed` from squad members' creature sections rather than `[online_offline_group]`).
+- **GAMMA `UISleep:TestAndShow` Rules, `actor_on_sleep(equiv_hours)`, & Forced Blackout Lock (`rtz_rest.script`)**:
+  - `start_resting` now enforces GAMMA's `5000` sleep threshold, bleeding/radiation checks, and safe cover / tent shelter checks (`GetEvent("current_safe_cover")` or `item_tent.get_nearby_tent(1.5)`).
+  - `stop_resting` computes the equivalent hours rested (`math.floor((recovered / 8000) * 8 + 0.5)`) and passes them to `actor_on_sleep(equiv_hours)` while guarding `forced_weather_change`, `time_forwarded`, hunger, thirst, and fatigue—allowing Body Health System limb healing and `arszi_psy` regeneration to scale properly with rest.
+  - Exhaustion blackouts (`sleep_forced`) now enforce a 30-second unskippable penalty window before wake controls unlock.
+- **Restored `snd_volume_music` on `actor_on_net_destroy` and Quit (`rtz_rest.script`)**:
+  - Registered `actor_on_net_destroy`, `on_before_level_changing`, and `main_menu.OnButton_quit_clicked` hooks to restore `snd_volume_music` and `snd_volume_eff` so quitting mid-rest never saves `0` into `user.ltx`.
+- **Added MIT `LICENSE`**:
+  - Added the MIT `LICENSE` file to the repository root.
+
 ---
 
 ## [1.0.1] - 2026-10-21

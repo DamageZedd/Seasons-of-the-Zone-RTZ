@@ -1,9 +1,95 @@
 ; =======================================================================================
 ; Real Time Zone (RTZ) - Offline A-Life Squad Travel Speed Compensation (DLTX)
-; Compensates C++ CALifeOnlineOfflineGroup offline movement speed for 1:1 real-time factor
-; so offline squads traverse levels at the exact same real-world pace as vanilla (6.0x).
+; In X-Ray Engine (alife_online_offline_group.cpp), CALifeOnlineOfflineGroup copies
+; m_fGoingSpeed and m_fCurrentLevelGoingSpeed from its member creature sections
+; (stalker and monster sections). Multiplying stock speeds by 6x compensates for
+; time_factor = 1.0 so offline squads traverse the Zone at stock real-world speed.
 ; =======================================================================================
 
+![stalker]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![monster_base]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_bloodsucker_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_boar_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_burer_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![cat_test]
+going_speed               = 6.0
+current_level_going_speed = 18.0
+
+![m_chimera_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_controller_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_dog_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_flesh_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![flesh_03a_normal]
+going_speed               = 30.0
+current_level_going_speed = 30.0
+
+![flesh_03a_strong]
+going_speed               = 30.0
+current_level_going_speed = 30.0
+
+![flesh_bolot]
+going_speed               = 30.0
+current_level_going_speed = 30.0
+
+![fracture_normal]
+going_speed               = 27.0
+current_level_going_speed = 18.0
+
+![m_gigant_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_lurker_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_poltergeist_e]
+going_speed               = 24.0
+current_level_going_speed = 24.0
+
+![m_pseudodog_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_snork_e]
+going_speed               = 18.0
+current_level_going_speed = 18.0
+
+![m_zombie_e]
+going_speed               = 12.0
+current_level_going_speed = 12.0
+
+![zombie_weak]
+going_speed               = 12.0
+current_level_going_speed = 12.0
+
 ![online_offline_group]
-going_speed               = 10.0
-current_level_going_speed = 10.0
+going_speed               = 18.0
+current_level_going_speed = 18.0

@@ -1,13 +1,16 @@
 """Real Time Zone (RTZ) - Companion Hourly Weather Fetcher & Installer
 
 Fetches live hour-by-hour weather from Open-Meteo for the location configured in
-Seasons of the Zone (or Chornobyl by default), and writes gamedata\\configs\\rtz_weather.ltx
-inside the RTZ addon folder.
+Seasons of the Zone (or Chornobyl by default), maps each forecast hour to the
+PC's local wall-clock hour (0..23) so the sky matches what is happening at the
+configured location at that exact moment, and writes gamedata\\configs\\rtz_weather.ltx.
 
-When run with `--install` (via setup_rtz.bat), copies itself into GAMMA\\_tools and
-adds the 1-line hourly weather hook into GAMMA\\play.bat.
+Note: Seasons of the Zone 2.11.0+ natively writes an [hourly] section mapped to
+the PC's clock in season_weather.ltx, which RTZ reads first. This script serves
+as an optional standalone fallback for older Seasons versions.
 """
 
+from datetime import datetime, timezone
 import json
 import os
 import shutil
@@ -96,13 +99,14 @@ def get_place():
 
 
 def fetch_hourly(lat, lon):
+    """Fetches hourly forecast in UTC (GMT) so timestamps map cleanly to PC local clock hours."""
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
         f"&hourly=weather_code,temperature_2m,precipitation"
-        f"&timezone=auto&forecast_days=2"
+        f"&timezone=GMT&forecast_days=2"
     )
-    req = urllib.request.Request(url, headers={"User-Agent": "RTZ-WeatherFetcher/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "RTZ-WeatherFetcher/1.0.2"})
     with urllib.request.urlopen(req, timeout=12) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -155,23 +159,46 @@ def main():
         print("  RTZ: No hourly data in response.")
         return 1
 
+    now_local = datetime.now()
+    today_str = now_local.strftime("%Y-%m-%d")
+    now_utc_ts = datetime.now(timezone.utc).timestamp()
+
+    # Map the next 24 hours from now to the PC's local wall-clock hours (0..23)
+    mapped_hours = {}
+    for i, t_str in enumerate(times):
+        try:
+            dt_utc = datetime.strptime(t_str, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
+            ts = dt_utc.timestamp()
+        except ValueError:
+            continue
+        # Pick the 24 hourly slots covering [now - 1h, now + 23h]
+        if -3600 <= (ts - now_utc_ts) < 23 * 3600:
+            pc_hour = datetime.fromtimestamp(ts).hour
+            if pc_hour not in mapped_hours:
+                code = codes[i] if i < len(codes) else 3
+                temp = temps[i] if i < len(temps) else "?"
+                mapped_hours[pc_hour] = (code_to_cycle(code), temp)
+
     lines = [
-        "; Real Time Zone (RTZ) - Live Hourly Weather Data",
+        "; Real Time Zone (RTZ) - Live Hourly Weather Data (Mapped to PC Clock)",
         "; Generated automatically from Open-Meteo",
         "",
         "[place]",
         f"name = {place['name']}",
         f"lat  = {place['lat']}",
         f"lon  = {place['lon']}",
+        f"date = {today_str}",
         "",
         "[hourly]",
     ]
 
-    for i in range(min(24, len(times))):
-        h = int(times[i].split("T")[1].split(":")[0])
-        code = codes[i]
-        cycle = code_to_cycle(code)
-        temp = temps[i] if i < len(temps) else "?"
+    for h in range(24):
+        if h in mapped_hours:
+            cycle, temp = mapped_hours[h]
+        else:
+            idx = min(h, len(codes) - 1)
+            cycle = code_to_cycle(codes[idx])
+            temp = temps[idx] if idx < len(temps) else "?"
         lines.append(f"{h} = {cycle} ; {temp}C")
 
     content = "\n".join(lines) + "\n"
@@ -183,7 +210,7 @@ def main():
     out_file = os.path.join(rtz_cfg_dir, "rtz_weather.ltx")
     with open(out_file, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"  RTZ: Updated 24-hour live weather forecast ({place['name']}).")
+    print(f"  RTZ: Updated 24-hour live weather forecast ({place['name']}) mapped to PC clock.")
     return 0
 
 

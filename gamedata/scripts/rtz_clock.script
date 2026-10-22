@@ -17,6 +17,7 @@ local BOOSTER_TICK_MS = 100 -- Compensate C++ medkit/booster healing & passive c
 local is_synced = false
 local alife_hooks_installed = false
 local arszi_psy_hooked = false
+is_in_sleep_callback = false
 
 local base_drink_chk = nil
 local base_sleep_chk = nil
@@ -100,7 +101,6 @@ function snapshot_vitals()
             snap.satiety = db.actor.satiety
             snap.health = db.actor.health
             snap.power = db.actor.power
-            snap.bleeding = db.actor.bleeding
         end
         if actor_status_sleep then
             if actor_status_sleep.get_last_sleep then
@@ -167,25 +167,17 @@ function restore_vitals_exact(snap)
     pcall(function()
         local now_gt = game and game.get_game_time and game.get_game_time() or nil
 
-        -- 1. Preserve Surge & Psi-Storm elapsed progress across clock sync
+        -- 1. Preserve Surge & Psi-Storm elapsed progress across clock sync (only when not currently active)
         if now_gt and surge_manager and surge_manager.get_surge_manager then
             local sm = surge_manager.get_surge_manager()
-            if sm then
-                sm.last_surge_time = make_offset_ctime(now_gt, snap.surge_elapsed or 0)
-                if sm.started then
-                    sm.started = false
-                    sm.finished = true
-                end
+            if sm and not sm.started and snap.surge_elapsed then
+                sm.last_surge_time = make_offset_ctime(now_gt, snap.surge_elapsed)
             end
         end
         if now_gt and psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
             local pm = psi_storm_manager.get_psi_storm_manager()
-            if pm then
-                pm.last_psi_storm_time = make_offset_ctime(now_gt, snap.psi_elapsed or 0)
-                if pm.started then
-                    pm.started = false
-                    pm.finished = true
-                end
+            if pm and not pm.started and snap.psi_elapsed then
+                pm.last_psi_storm_time = make_offset_ctime(now_gt, snap.psi_elapsed)
             end
         end
 
@@ -243,7 +235,8 @@ function restore_vitals_exact(snap)
             end
         end
 
-        -- 4. Restore exact C++ engine actor conditions (satiety/hunger, health, power, bleeding)
+        -- 4. Restore exact C++ engine actor conditions (satiety/hunger, health, power)
+        -- Note: db.actor.bleeding setter in xray-monolith is ChangeBleeding (shrinks wounds), so never assign it
         if db.actor then
             if snap.satiety ~= nil and db.actor.satiety ~= nil then
                 db.actor.satiety = snap.satiety
@@ -253,9 +246,6 @@ function restore_vitals_exact(snap)
             end
             if snap.power ~= nil and db.actor.power ~= nil then
                 db.actor.power = snap.power
-            end
-            if snap.bleeding ~= nil and db.actor.bleeding ~= nil then
-                db.actor.bleeding = snap.bleeding
             end
         end
     end)
@@ -455,6 +445,9 @@ local function patch_external_time_elapsed_mods()
             local org_get_psy_regen = arszi_psy.get_psy_health_regeneration
             arszi_psy.get_psy_health_regeneration = function(...)
                 local val = org_get_psy_regen(...)
+                if is_in_sleep_callback then
+                    return val
+                end
                 if type(val) == "number" and rtz_mcm.get_config("enabled") and rtz_mcm.get_config("fix_boosters_and_effects") then
                     local cur_tf = (level and level.get_time_factor and level.get_time_factor()) or 1.0
                     local scale = math.max(1.0, VANILLA_TIME_FACTOR / math.max(0.5, cur_tf))
@@ -539,33 +532,9 @@ local function update_vanilla_hunger_drain(tg)
     local dt_real = math.min(5.0, (tg - last_vitals_tick) / 1000.0)
     last_vitals_tick = tg
 
-    -- Sync Thirst & Sleep check upvalues, DAO/PBA/Psy hooks, and Surge/Psi-Storm deltas
+    -- Sync Thirst & Sleep check upvalues and DAO/PBA/Psy hooks
     sync_thirst_and_sleep_intervals()
     patch_external_time_elapsed_mods()
-
-    pcall(function()
-        local ratio = get_vanilla_scale_ratio()
-        if surge_manager and surge_manager.get_surge_manager then
-            local sm = surge_manager.get_surge_manager()
-            if sm and sm._delta then
-                if not sm.__rtz_base_delta or math.abs(sm._delta - (sm.__rtz_last_scaled_delta or sm._delta)) > 10 then
-                    sm.__rtz_base_delta = sm._delta
-                end
-                sm.__rtz_last_scaled_delta = math.max(600, math.floor(sm.__rtz_base_delta * ratio + 0.5))
-                sm._delta = sm.__rtz_last_scaled_delta
-            end
-        end
-        if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
-            local pm = psi_storm_manager.get_psi_storm_manager()
-            if pm and pm._delta then
-                if not pm.__rtz_base_delta or math.abs(pm._delta - (pm.__rtz_last_scaled_delta or pm._delta)) > 10 then
-                    pm.__rtz_base_delta = pm._delta
-                end
-                pm.__rtz_last_scaled_delta = math.max(600, math.floor(pm.__rtz_base_delta * ratio + 0.5))
-                pm._delta = pm.__rtz_last_scaled_delta
-            end
-        end
-    end)
 
     if not rtz_mcm.get_config("enabled") then
         return
@@ -650,7 +619,29 @@ local function on_smart_try_respawn(smart, flags)
     end
 end
 
---- Installs A-Life hooks for squad movement idle timers, smart terrain respawn timers, and item booster tracking
+--- Scales pre-existing Surge & Psi-Storm `_delta` once on session load if unscaled
+local function scale_initial_emission_deltas()
+    pcall(function()
+        local ratio = get_vanilla_scale_ratio()
+        if ratio >= 0.99 then return end
+        if surge_manager and surge_manager.get_surge_manager then
+            local sm = surge_manager.get_surge_manager()
+            if sm and sm._delta and not sm.__rtz_unscaled_delta and sm._delta > 21600 then
+                sm.__rtz_unscaled_delta = sm._delta
+                sm._delta = math.max(600, math.floor(sm.__rtz_unscaled_delta * ratio + 0.5))
+            end
+        end
+        if psi_storm_manager and psi_storm_manager.get_psi_storm_manager then
+            local pm = psi_storm_manager.get_psi_storm_manager()
+            if pm and pm._delta and not pm.__rtz_unscaled_delta and pm._delta > 21600 then
+                pm.__rtz_unscaled_delta = pm._delta
+                pm._delta = math.max(600, math.floor(pm.__rtz_unscaled_delta * ratio + 0.5))
+            end
+        end
+    end)
+end
+
+--- Installs A-Life hooks for squad movement idle timers, smart terrain respawn timers, emission roll scaling, and item booster tracking
 local function install_alife_hooks()
     if alife_hooks_installed then return end
     alife_hooks_installed = true
@@ -658,6 +649,46 @@ local function install_alife_hooks()
     RegisterScriptCallback("squad_on_update", on_squad_update)
     RegisterScriptCallback("on_try_respawn", on_smart_try_respawn)
     RegisterScriptCallback("actor_on_item_use", on_actor_item_use)
+
+    -- Wrap CSurgeManager.new_surge_time & CPsiStormManager.new_psi_storm_time so _delta is scaled once per new roll
+    -- while keeping the 1-hour spacing check between emissions and psi-storms intact in unscaled vanilla seconds
+    if surge_manager and surge_manager.CSurgeManager and surge_manager.CSurgeManager.new_surge_time then
+        local org_new_surge_time = surge_manager.CSurgeManager.new_surge_time
+        surge_manager.CSurgeManager.new_surge_time = function(self, reset)
+            local pm = psi_storm_manager and psi_storm_manager.get_psi_storm_manager and psi_storm_manager.get_psi_storm_manager()
+            if pm and pm.__rtz_unscaled_delta then
+                pm._delta = pm.__rtz_unscaled_delta
+            end
+            org_new_surge_time(self, reset)
+            local ratio = get_vanilla_scale_ratio()
+            if self._delta then
+                self.__rtz_unscaled_delta = self._delta
+                self._delta = math.max(600, math.floor(self.__rtz_unscaled_delta * ratio + 0.5))
+            end
+            if pm and pm.__rtz_unscaled_delta then
+                pm._delta = math.max(600, math.floor(pm.__rtz_unscaled_delta * ratio + 0.5))
+            end
+        end
+    end
+
+    if psi_storm_manager and psi_storm_manager.CPsiStormManager and psi_storm_manager.CPsiStormManager.new_psi_storm_time then
+        local org_new_psi_storm_time = psi_storm_manager.CPsiStormManager.new_psi_storm_time
+        psi_storm_manager.CPsiStormManager.new_psi_storm_time = function(self, reset)
+            local sm = surge_manager and surge_manager.get_surge_manager and surge_manager.get_surge_manager()
+            if sm and sm.__rtz_unscaled_delta then
+                sm._delta = sm.__rtz_unscaled_delta
+            end
+            org_new_psi_storm_time(self, reset)
+            local ratio = get_vanilla_scale_ratio()
+            if self._delta then
+                self.__rtz_unscaled_delta = self._delta
+                self._delta = math.max(600, math.floor(self.__rtz_unscaled_delta * ratio + 0.5))
+            end
+            if sm and sm.__rtz_unscaled_delta then
+                sm._delta = math.max(600, math.floor(sm.__rtz_unscaled_delta * ratio + 0.5))
+            end
+        end
+    end
 
     -- Hook ZCP (Survival Mode Remade / smr_pop.smart_can_respawn) if present
     if smr_pop and smr_pop.smart_can_respawn then
@@ -696,16 +727,24 @@ end
 -- Real-Time Clock Synchronization
 -- =======================================================================================
 
---- Computes forward difference in seconds (0..86399), returning 0 if already within the same minute window
+local function is_emission_or_wfx_active()
+    if level and level.is_wfx_playing and level.is_wfx_playing() then return true end
+    if surge_manager and surge_manager.is_started and surge_manager.is_started() then return true end
+    if psi_storm_manager and psi_storm_manager.is_started and psi_storm_manager.is_started() then return true end
+    return false
+end
+
+--- Computes forward difference in seconds (0..86399) and signed difference (-43200..+43200)
 local function get_clock_diff_seconds()
     local real = os.date("*t")
-    if not real then return 0, nil end
+    if not real then return 0, nil, 0 end
 
     local real_sec = real.hour * 3600 + real.min * 60 + real.sec
     local game_h, game_m, game_s = get_game_hms()
     local game_sec = game_h * 3600 + game_m * 60 + game_s
 
     -- Signed shortest distance on the 24h circle (-43200 .. +43200)
+    -- Positive: game clock is behind real time. Negative: game clock is ahead of real time.
     local signed_diff = (real_sec - game_sec) % 86400
     if signed_diff > 43200 then
         signed_diff = signed_diff - 86400
@@ -714,11 +753,11 @@ local function get_clock_diff_seconds()
     -- Because level.change_game_time only takes whole minutes (hours, mins) and cannot adjust seconds,
     -- if the clock is within [-90s, +60s] of real time, it is already synced to the current minute!
     if signed_diff >= -90 and signed_diff < 60 then
-        return 0, real
+        return 0, real, signed_diff
     end
 
     local forward_diff = (real_sec - game_sec) % 86400
-    return forward_diff, real
+    return forward_diff, real, signed_diff
 end
 
 --- Synchronizes the in-game clock directly with real OS wall clock
@@ -727,8 +766,22 @@ function sync_to_real_time(force)
         return
     end
 
-    local diff_sec, real = get_clock_diff_seconds()
+    -- Never jump the clock while an emission, psi-storm, or weather FX is active
+    if is_emission_or_wfx_active() then
+        return
+    end
+
+    local diff_sec, real, signed_diff = get_clock_diff_seconds()
     if not real or diff_sec < 60 then
+        is_synced = true
+        return
+    end
+
+    -- If the game clock is slightly ahead of real time (up to 4 hours ahead, e.g. after an emission at
+    -- time_factor = 10 or Fair Fast Travel), do NOT jump +20..23 hours forward and cost a day!
+    -- Instead, enforce_time_factor() slows the game clock until the wall clock catches up.
+    if signed_diff < -60 and signed_diff >= -14400 then
+        printf_rtz("Game clock is %d mins ahead of wall clock; holding/slowing time factor instead of jumping +23h.", math.floor(-signed_diff / 60))
         is_synced = true
         return
     end
@@ -758,18 +811,26 @@ function sync_to_real_time(force)
     is_synced = true
 end
 
---- Enforces target time factor (1.0 default)
+--- Enforces target time factor (1.0 default, or 0.1 catch-up hold when game clock is ahead of wall clock)
 function enforce_time_factor()
     if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("lock_time_factor") then
         return
     end
 
     -- Do not override during active surge/psi-storm FX
-    if level.is_wfx_playing and level.is_wfx_playing() then return end
-    if surge_manager and surge_manager.is_started and surge_manager.is_started() then return end
-    if psi_storm_manager and psi_storm_manager.is_started and psi_storm_manager.is_started() then return end
+    if is_emission_or_wfx_active() then return end
 
     local target_tf = rtz_mcm.get_config("time_factor_val") or 1.0
+
+    -- If clock sync is enabled and game clock is 1.5 mins to 4 hours ahead of wall clock (e.g. post-emission),
+    -- slow the game clock to 0.1x so the wall clock catches up without jumping a full day forward
+    if rtz_mcm.get_config("sync_clock") then
+        local _, _, signed_diff = get_clock_diff_seconds()
+        if signed_diff and signed_diff < -90 and signed_diff >= -14400 then
+            target_tf = math.min(target_tf, 0.1)
+        end
+    end
+
     local cur_tf = level.get_time_factor()
     if math.abs(cur_tf - target_tf) > 0.05 then
         level.set_time_factor(target_tf)
@@ -778,6 +839,7 @@ end
 
 function init()
     install_alife_hooks()
+    scale_initial_emission_deltas()
     enforce_time_factor()
     sync_to_real_time(true)
     sync_thirst_and_sleep_intervals()
@@ -792,11 +854,11 @@ function update()
 
     if tg > last_drift_check + DRIFT_CHECK_MS then
         last_drift_check = tg
-        -- Drift check: verify if loading pauses or menu pauses caused a 1-5 minute lag behind real time
-        if rtz_mcm.get_config("enabled") and rtz_mcm.get_config("sync_clock") then
-            local diff_sec = get_clock_diff_seconds()
-            if diff_sec >= 90 and diff_sec < 600 then
-                change_game_time_guarded(0, 0, math.floor(diff_sec / 60))
+        -- Drift check: verify if loading/menu pauses or an emission left the clock behind real time
+        if rtz_mcm.get_config("enabled") and rtz_mcm.get_config("sync_clock") and not is_emission_or_wfx_active() then
+            local _, _, signed_diff = get_clock_diff_seconds()
+            if signed_diff and signed_diff >= 90 and signed_diff <= 14400 then
+                change_game_time_guarded(0, 0, math.floor(signed_diff / 60))
             end
         end
     end
