@@ -311,6 +311,38 @@ local function install_weather_hooks()
         end
     end
 
+    -- 3. Scale W.P.W.M.'s pre-emission lead time. It is configured in game hours (default 2) and compared against
+    -- game-second deltas, so at 1:1 it would become a real-time 2 hours instead of the vanilla ~20 real minutes.
+    if level_weathers.WeatherManager.check_pre_blowout then
+        local org_check_pre_blowout = level_weathers.WeatherManager.check_pre_blowout
+        level_weathers.WeatherManager.check_pre_blowout = function(self)
+            if not (rtz_mcm.get_config("enabled") and rtz_clock and rtz_clock.get_target_scale_ratio) then
+                return org_check_pre_blowout(self)
+            end
+            local ratio = rtz_clock.get_target_scale_ratio()
+            local current_date = game.get_game_time()
+            local function remaining(mgr, last_key)
+                if mgr and mgr._delta and mgr[last_key] then
+                    return math.floor(mgr._delta - current_date:diffSec(mgr[last_key]))
+                end
+                return math.huge
+            end
+            local diff_s = remaining(surge_manager and surge_manager.SurgeManager, "last_surge_time")
+            local diff_p = remaining(psi_storm_manager and psi_storm_manager.PsiStormManager, "last_psi_storm_time")
+            local lead = ((ui_mcm and ui_mcm.get("weather_weights_control/general/pre_emission_lead")) or 2) * 3600 * ratio
+            local function upcoming(diff)
+                return lead > 0 and diff < lead and diff > -3600 * ratio
+            end
+            if (upcoming(diff_s) and ui_options.get("alife/event/emission_state"))
+                or (upcoming(diff_p) and ui_options.get("alife/event/psi_storm_state"))
+                or level.is_wfx_playing() then
+                self.pre_blowout_period = true
+            else
+                self.pre_blowout_period = false
+            end
+        end
+    end
+
     hooked = true
     printf_rtz("WeatherManager hooks successfully installed.")
 end

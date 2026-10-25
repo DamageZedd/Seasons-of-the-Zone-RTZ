@@ -492,6 +492,25 @@ local function patch_external_time_elapsed_mods()
             end
         end
 
+        -- 2b. GAMMA's surge_manager main_loop resets the time factor to its stored `normal_time_factor` (6) every
+        -- second once emissions finish, which fights enforce_time_factor into a sawtooth. Point its stored value at
+        -- the factor RTZ wants. main_loop is only reachable as a key of AddUniqueCall's registry table.
+        local registry = get_upvalue_by_name(AddUniqueCall, "level_add_call_unique")
+        if type(registry) == "table" then
+            local want = VANILLA_TIME_FACTOR
+            if rtz_mcm.get_config("enabled") and rtz_mcm.get_config("lock_time_factor") then
+                want = get_desired_time_factor()
+            end
+            for fn in pairs(registry) do
+                if type(fn) == "function" then
+                    local cur = get_upvalue_by_name(fn, "normal_time_factor")
+                    if cur ~= nil and cur ~= want then
+                        set_upvalue_by_name(fn, "normal_time_factor", want)
+                    end
+                end
+            end
+        end
+
         -- 3. Hook arszi_psy.get_psy_health_regeneration so psy-health recovers at vanilla real-time speed
         if not arszi_psy_hooked and arszi_psy and arszi_psy.get_psy_health_regeneration then
             local org_get_psy_regen = arszi_psy.get_psy_health_regeneration
@@ -1017,15 +1036,8 @@ function sync_to_real_time(force)
     is_synced = true
 end
 
---- Enforces target time factor (1.0 default, or 0.1 catch-up hold when game clock is ahead of wall clock)
-function enforce_time_factor()
-    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("lock_time_factor") then
-        return
-    end
-
-    -- Do not override during active surge/psi-storm FX
-    if is_emission_or_wfx_active() then return end
-
+--- Time factor RTZ wants right now: the configured value, or 0.1 while the game clock is ahead of the wall clock
+function get_desired_time_factor()
     local target_tf = rtz_mcm.get_config("time_factor_val") or 1.0
 
     -- If clock sync is enabled and game clock is 1.5 mins to 4 hours ahead of wall clock (e.g. post-emission),
@@ -1036,6 +1048,19 @@ function enforce_time_factor()
             target_tf = math.min(target_tf, 0.1)
         end
     end
+    return target_tf
+end
+
+--- Enforces target time factor (1.0 default, or 0.1 catch-up hold when game clock is ahead of wall clock)
+function enforce_time_factor()
+    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("lock_time_factor") then
+        return
+    end
+
+    -- Do not override during active surge/psi-storm FX
+    if is_emission_or_wfx_active() then return end
+
+    local target_tf = get_desired_time_factor()
 
     local cur_tf = level.get_time_factor()
     if math.abs(cur_tf - target_tf) > 0.05 then
