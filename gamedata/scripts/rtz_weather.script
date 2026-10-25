@@ -25,13 +25,13 @@ local function get_inis()
 end
 
 --- Checks whether Seasons of the Zone's `[hourly]` section is within 24 hours of its `start` timestamp
-local function hourly_fresh(ini)
+local function hourly_fresh(ini, at_ts)
     if not ini or not ini.section_exist or not ini:section_exist("hourly") then return false end
     local raw_start = ini:r_string_ex("hourly", "start") or ""
     local Y, M, D, h, m = raw_start:match("^(%d+)%-(%d+)%-(%d+)T(%d+):(%d+)")
     if not Y then return false end
     local start_ts = os.time({year = tonumber(Y), month = tonumber(M), day = tonumber(D), hour = tonumber(h), min = tonumber(m)})
-    local age = os.time() - start_ts
+    local age = (at_ts or os.time()) - start_ts
     return age >= 0 and age < 86400
 end
 
@@ -64,10 +64,10 @@ local function parse_forecast_entry(sotz_ini, date_key)
 end
 
 --- Reads today's and tomorrow's Open-Meteo data from `season_weather.ltx`
-local function get_sotz_days(sotz_ini)
+local function get_sotz_days(sotz_ini, at_ts)
     if not sotz_ini then return nil, nil end
 
-    local now_ts = os.time()
+    local now_ts = at_ts or os.time()
     local real_today = os.date("*t", now_ts)
     local real_next  = os.date("*t", now_ts + 86400)
 
@@ -126,7 +126,8 @@ local BRIDGE_CYCLE = {
 --- 1) Reads Seasons of the Zone 2.11.0+'s `[hourly]` section in `season_weather.ltx` (mapped to the PC's clock)
 --- 2) Reads optional `rtz_weather.ltx` `[hourly]` if generated today by `_tools/fetch_rtz_hourly.py`
 --- 3) Falls back to diurnal modeling from `season_weather.ltx` `[forecast]` / `[weather]`
-function get_real_cycle(target_hour)
+--- `hours_ahead` (optional) is how far past now `target_hour` lies, so forecast dates are keyed by that hour's own timestamp
+function get_real_cycle(target_hour, hours_ahead)
     if sotz_api and sotz_api.weather_hold then
         local ok, held = pcall(sotz_api.weather_hold)
         if ok and held and held ~= "" then
@@ -136,6 +137,7 @@ function get_real_cycle(target_hour)
 
     local cur_h = (target_hour or level.get_time_hours()) % 24
     local rtz_ini, sotz_ini = get_inis()
+    local target_ts = os.time() + math.floor((hours_ahead or 0) * 3600)
 
     -- 1. Check Seasons of the Zone's season_weather.ltx [hourly] first (native in Seasons 2.11.0+, mapped to PC clock)
     -- Only use [hourly] if it was generated within the last 24 hours; otherwise fall back to date-keyed [forecast]
@@ -163,7 +165,7 @@ function get_real_cycle(target_hour)
 
     -- 3. Fallback: Diurnal modeling from Seasons of the Zone's daily [forecast] / [weather]
     if sotz_ini then
-        local today, tomorrow = get_sotz_days(sotz_ini)
+        local today, tomorrow = get_sotz_days(sotz_ini, target_ts)
         if today and today.cycle then
             local main_c = today.cycle
             local next_c = (tomorrow and tomorrow.cycle) or main_c
@@ -206,7 +208,7 @@ local function sync_manager_day_plan(mgr)
         for offset = 1, 24 do
             local h = (cur_h + offset) % 24
             local seg_min = now_min + mins_to_next_hour + (offset - 1) * 60
-            local cyc = normalize_cycle(mgr, get_real_cycle(h)) or mgr.cycle or "clear"
+            local cyc = normalize_cycle(mgr, get_real_cycle(h, mins_to_next_hour / 60 + (offset - 1))) or mgr.cycle or "clear"
             plan[#plan + 1] = { minute = seg_min, cycle = cyc }
         end
         mgr.day_plan = plan
@@ -285,13 +287,17 @@ local function install_weather_hooks()
                 if self.pre_blowout_period or self.weather_fx then
                     return org_check_day_plan(self)
                 end
+                local real = normalize_cycle(self, get_real_cycle())
+                if not real then
+                    -- No real-world data available (e.g. Seasons' cycle file missing): let the original advance the sky
+                    return org_check_day_plan(self)
+                end
                 local restored = false
                 if self.blowout_override then
                     self.blowout_override = false
                     restored = true
                 end
-                local real = normalize_cycle(self, get_real_cycle())
-                if real and (self.cycle ~= real or restored or self.forced_weather_change_on_time_change) then
+                if self.cycle ~= real or restored or self.forced_weather_change_on_time_change then
                     self.cycle = real
                     if self.presets[real] and random_key_table then
                         self.preset = random_key_table(self.presets[real])

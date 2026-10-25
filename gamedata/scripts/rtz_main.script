@@ -49,10 +49,16 @@ function save_state(m_data)
     if not m_data then return end
     m_data.rtz = m_data.rtz or {}
     m_data.rtz.saved_at = os.time()
+    if rtz_clock and rtz_clock.get_elapsed_for_save then
+        m_data.rtz.elapsed = rtz_clock.get_elapsed_for_save()
+    end
 end
 
 function load_state(m_data)
     if not m_data or not m_data.rtz then return end
+    if rtz_clock and rtz_clock.set_elapsed_from_save and m_data.rtz.elapsed then
+        rtz_clock.set_elapsed_from_save(m_data.rtz.elapsed)
+    end
     local last_time = m_data.rtz.saved_at
     if last_time then
         local elapsed = os.time() - last_time

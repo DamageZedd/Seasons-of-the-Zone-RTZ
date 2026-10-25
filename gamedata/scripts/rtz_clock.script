@@ -32,6 +32,7 @@ local active_boosters = {}
 -- Monotonic real-time elapsed clock for Demonized's DAO (drx_da_main) & PBA (perk_based_artefacts)
 local rtz_elapsed_anchor = nil
 local rtz_elapsed_start_tg = nil
+local rtz_elapsed_saved = nil
 local orig_drx_get_time_elapsed = nil
 local orig_pba_get_time_elapsed = nil
 
@@ -91,6 +92,21 @@ function get_vanilla_scale_ratio()
         or rtz_mcm.get_config("time_factor_val")
         or 1.0
     return math.max(0.05, cur_tf / VANILLA_TIME_FACTOR)
+end
+
+--- Like get_vanilla_scale_ratio, but uses the time factor RTZ is configured to run at, not the current one.
+--- Emission managers roll the next delta while the emission's own factor is still active, which would
+--- otherwise stretch the delta far too long.
+function get_target_scale_ratio()
+    if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("vanilla_vitals_alife_scale") then
+        return 1.0
+    end
+    local tf
+    if rtz_mcm.get_config("lock_time_factor") then
+        tf = rtz_mcm.get_config("time_factor_val")
+    end
+    tf = tf or (level and level.get_time_factor and level.get_time_factor()) or 1.0
+    return math.max(0.05, tf / VANILLA_TIME_FACTOR)
 end
 
 --- Snapshots exact actor vitals and timer offsets prior to ANY level.change_game_time call
@@ -359,8 +375,9 @@ local function update_boosters_and_effects(tg)
                     if (b.rate > 0 and (db.actor.radiation or 0) > 0) or b.rate < 0 then
                         db.actor:change_radiation(-b.rate * missing_tf * step_dt)
                     end
-                elseif k == "bld" and b.rate > 0 and (db.actor.bleeding or 0) > 0 and db.actor.heal_wounds then
-                    db.actor:heal_wounds(b.rate * missing_tf * step_dt)
+                elseif k == "bld" and b.rate > 0 and (db.actor.bleeding or 0) > 0 then
+                    -- The `bleeding` setter is ChangeBleeding: a positive value shrinks wounds
+                    db.actor.bleeding = b.rate * missing_tf * step_dt
                 end
             end
 
@@ -379,11 +396,11 @@ local function update_boosters_and_effects(tg)
             if (db.actor.psy_health or 1.0) < 1.0 and db.actor.change_psy_health then
                 db.actor:change_psy_health(cached_psy_health_v * missing_tf * dt_real)
             end
-            if (db.actor.alcohol or 0) > 0 then
-                db.actor.alcohol = math.max(0.0, db.actor.alcohol + cached_alcohol_v * missing_tf * dt_real)
+            if (db.actor.alcohol or 0) > 0 and db.actor.ChangeAlcohol then
+                db.actor:ChangeAlcohol(cached_alcohol_v * missing_tf * dt_real)
             end
-            if (db.actor.bleeding or 0) > 0 and db.actor.heal_wounds then
-                db.actor:heal_wounds(cached_wound_incarnation_v * missing_tf * dt_real)
+            if (db.actor.bleeding or 0) > 0 then
+                db.actor.bleeding = cached_wound_incarnation_v * missing_tf * dt_real
             end
         end
     end)
@@ -397,11 +414,25 @@ local function get_rtz_monotonic_elapsed()
             raw = math.floor(game.get_game_time():diffSec(level.get_start_time()) / VANILLA_TIME_FACTOR * 10) * 0.1
         end)
         local min_surge = (drx_da_main and tonumber(drx_da_main.last_surge_time)) or 0
-        rtz_elapsed_anchor = math.max(raw, min_surge + 1.0)
+        -- Anchor to the larger of the raw clock and the saved value so loads never rewind PBA/DAO timers
+        rtz_elapsed_anchor = math.max(raw, min_surge + 1.0, rtz_elapsed_saved or 0)
         rtz_elapsed_start_tg = time_global()
     end
     local dt_sec = math.max(0, time_global() - rtz_elapsed_start_tg) * 0.001
     return math.floor((rtz_elapsed_anchor + dt_sec) * 10) * 0.1
+end
+
+--- Returns the monotonic elapsed value to persist in the save file
+function get_elapsed_for_save()
+    if not rtz_elapsed_anchor then return rtz_elapsed_saved end
+    return get_rtz_monotonic_elapsed()
+end
+
+--- Restores the saved elapsed value and forces re-anchoring on the next read
+function set_elapsed_from_save(val)
+    rtz_elapsed_saved = tonumber(val)
+    rtz_elapsed_anchor = nil
+    rtz_elapsed_start_tg = nil
 end
 
 local function rtz_drx_get_time_elapsed()
@@ -675,7 +706,7 @@ local function get_emission_interval_bounds(is_psi_storm)
     -- mode == 0: Vanilla Anomaly setting scaled to real time (~2-4 Real Hours by default)
     local opt_key = is_psi_storm and "alife/event/psi_storm_frequency" or "alife/event/emission_frequency"
     local freq = (ui_options and ui_options.get and tonumber(ui_options.get(opt_key))) or 24
-    local ratio = get_vanilla_scale_ratio()
+    local ratio = get_target_scale_ratio()
     local min_s = math.max(600, math.floor(math.floor(freq / 2) * 3600 * ratio + 0.5))
     local max_s = math.max(min_s + 600, math.floor(freq * 3600 * ratio + 0.5))
     return min_s, max_s
@@ -1032,7 +1063,9 @@ function update()
         -- Drift check: verify if loading/menu pauses or an emission left the clock behind real time
         if rtz_mcm.get_config("enabled") and rtz_mcm.get_config("sync_clock") and not is_emission_or_wfx_active() then
             local _, _, signed_diff = get_clock_diff_seconds()
-            if signed_diff and signed_diff >= 90 and signed_diff <= 14400 then
+            -- Skip while bleeding or irradiated so a long menu pause can't drain a large chunk of health at once
+            local hurt = db.actor and ((db.actor.bleeding or 0) > 0 or (db.actor.radiation or 0) > 0)
+            if signed_diff and signed_diff >= 90 and signed_diff <= 14400 and not hurt then
                 change_game_time_guarded(0, 0, math.floor(signed_diff / 60))
             end
         end

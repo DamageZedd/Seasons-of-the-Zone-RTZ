@@ -337,9 +337,6 @@ function stop_resting(interrupted)
             actor_menu.set_msg(1, game.translate_string("st_rtz_rest_woke_up"), 4)
         end
 
-        if rtz_mcm.get_config("autosave_on_rest") then
-            exec_console_cmd("save " .. (user_name() or "stalker") .. " - rest")
-        end
     end
 
     -- Compute equivalent sleep hours (up to 8 hours for a full 8000 fatigue recovery)
@@ -394,7 +391,36 @@ function stop_resting(interrupted)
         end
     end)
 
+    -- Autosave after the sleep handlers so the save includes this rest's healing
+    if not interrupted and rtz_mcm.get_config("autosave_on_rest") then
+        exec_console_cmd("save " .. (user_name() or "stalker") .. " - rest")
+    end
+
     printf_rtz("Finished rest (equiv_hours=%d), interrupted: %s", equiv_hours, tostring(interrupted))
+end
+
+--- Tears down the rest state/dialog without running sleep handlers (load, death, level change)
+function abort_resting()
+    if not is_resting and not GUI then return end
+    is_resting = false
+    rest_forced = false
+    if GUI then
+        pcall(function()
+            if GUI:IsShown() then
+                GUI:HideDialog()
+            end
+        end)
+        GUI = nil
+    end
+    if Unregister_UI then
+        pcall(Unregister_UI, "UIRtzRest")
+    end
+    pcall(function()
+        level.remove_pp_effector(8888)
+        level.remove_cam_effector(8889)
+    end)
+    restore_saved_volumes()
+    clear_sleep_infoportions()
 end
 
 --- Frame-independent update loop during active rest
@@ -524,7 +550,7 @@ end
 
 function init()
     install_sleep_hooks()
-    RegisterScriptCallback("actor_on_net_destroy", restore_saved_volumes)
+    RegisterScriptCallback("actor_on_net_destroy", abort_resting)
     RegisterScriptCallback("on_before_level_changing", restore_saved_volumes)
     if ui_main_menu and ui_main_menu.main_menu and ui_main_menu.main_menu.OnButton_quit_clicked and not ui_main_menu.main_menu.__rtz_quit_hooked then
         local org_quit = ui_main_menu.main_menu.OnButton_quit_clicked
