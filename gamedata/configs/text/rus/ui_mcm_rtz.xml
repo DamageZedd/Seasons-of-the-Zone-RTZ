@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+	<!-- Главное меню MCM и заголовки -->
+	<string id="ui_mcm_menu_rtz">
+		<text>Реальное время (RTZ)</text>
+	</string>
+	<string id="ui_mcm_rtz_title">
+		<text>Реальное время (RTZ) -- Аддон для Seasons of the Zone</text>
+	</string>
+	<string id="ui_mcm_rtz_desc">
+		<text>Синхронизирует Зону с реальностью. Задаёт течение времени 1:1 (1 реальная секунда = 1 игровая секунда), выравнивает внутриигровые часы по системному времени ПК, согласует погодные циклы с наблюдениями Open-Meteo и заменяет сон на отдых в реальном времени у кроватей и костров.</text>
+	</string>
+
+	<!-- Настройки часов и времени -->
+	<string id="ui_mcm_rtz_header_clock">
+		<text>Синхронизация часов и времени</text>
+	</string>
+	<string id="ui_mcm_rtz_enabled">
+		<text>Включить Real Time Zone</text>
+	</string>
+	<string id="ui_mcm_rtz_enabled_desc">
+		<text>Главный переключатель всех функций аддона RTZ.</text>
+	</string>
+	<string id="ui_mcm_rtz_sync_clock">
+		<text>Синхронизировать время с реальным</text>
+	</string>
+	<string id="ui_mcm_rtz_sync_clock_desc">
+		<text>При загрузке и смене локаций выравнивает внутриигровое время по системным часам вашего ПК (часы и минуты).</text>
+	</string>
+	<string id="ui_mcm_rtz_lock_time_factor">
+		<text>Фиксировать скорость 1:1</text>
+	</string>
+	<string id="ui_mcm_rtz_lock_time_factor_desc">
+		<text>Фиксирует фактор времени, чтобы игровое время шло строго со скоростью реального времени (1 реальная секунда = 1 игровая). Предотвращает сброс фактора времени на 6x после выбросов или других модов.</text>
+	</string>
+	<string id="ui_mcm_rtz_time_factor_val">
+		<text>Пользовательский фактор времени</text>
+	</string>
+	<string id="ui_mcm_rtz_time_factor_val_desc">
+		<text>Целевой фактор времени. По умолчанию 1.0 (настоящее реальное время). 2.0 = вдвое быстрее реальности. В ванильной Anomaly — 6.0.</text>
+	</string>
+	<string id="ui_mcm_rtz_safeguard_vitals">
+		<text>Защита параметров при скачках времени</text>
+	</string>
+	<string id="ui_mcm_rtz_safeguard_vitals_desc">
+		<text>Строго защищает показатели голода, жажды, сна, здоровья и таймеры выбросов при синхронизации часов, чтобы скачки времени не влияли на состояние персонажа.</text>
+	</string>
+	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale">
+		<text>Ванильный темп потребностей и A-Life (6x)</text>
+	</string>
+	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale_desc">
+		<text>Обеспечивает накопление усталости, перемещение отрядов A-Life, таймеры респавна смарт-террейнов (Vanilla и ZCP) и частоту выбросов со скоростью ванильной Anomaly (time_factor 6.0), даже когда часы идут 1:1.</text>
+	</string>
+	<string id="ui_mcm_rtz_vitals_mode">
+		<text>Режим голода и жажды</text>
+	</string>
+	<string id="ui_mcm_rtz_vitals_mode_desc">
+		<text>Определяет скорость истощения от голода и жажды в реальном времени:\n- Ванильная скорость (6x): расходуются со скоростью ванильной Anomaly.\n- Реальное время (1:1): расходуются в 6 раз медленнее в реальном времени, соответствуя часам 1:1.\n- Отключено (без еды и воды): фиксирует сытость и жажду на 100%, персонаж не нуждается в пище и воде.</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_vanilla">
+		<text>Ванильная скорость (6x)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_realtime">
+		<text>Реальное время (1:1)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_vitals_disabled">
+		<text>Отключено (без еды и воды)</text>
+	</string>
+	<string id="rtz_vitals_vanilla">
+		<text>Ванильная скорость (6x)</text>
+	</string>
+	<string id="rtz_vitals_realtime">
+		<text>Реальное время (1:1)</text>
+	</string>
+	<string id="rtz_vitals_disabled">
+		<text>Отключено (без еды и воды)</text>
+	</string>
+	<string id="ui_mcm_rtz_emission_frequency_mode">
+		<text>Частота выбросов и пси-штормов</text>
+	</string>
+	<string id="ui_mcm_rtz_emission_frequency_mode_desc">
+		<text>Определяет, как часто происходят выбросы и пси-штормы в реальном времени:\n- Ванильный масштаб (2-4 часа): масштабирует настройку Anomaly под реальное время.\n- 6-12 часов: раз в 6-12 реальных часов.\n- 12-24 часа: раз в 12-24 реальных часа.\n- 1-2 дня: раз в 24-48 реальных часов.\n- 2-4 дня: раз в 48-96 реальных часов.</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_vanilla">
+		<text>Ванильный масштаб (2-4 часа)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_6_12h">
+		<text>6-12 часов (реальное время)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_12_24h">
+		<text>12-24 часа (реальное время)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_1_2d">
+		<text>1-2 дня (24-48 часов)</text>
+	</string>
+	<string id="ui_mcm_lst_rtz_emiss_2_4d">
+		<text>2-4 дня (48-96 часов)</text>
+	</string>
+	<string id="rtz_emiss_vanilla">
+		<text>Ванильный масштаб (2-4 часа)</text>
+	</string>
+	<string id="rtz_emiss_6_12h">
+		<text>6-12 часов (реальное время)</text>
+	</string>
+	<string id="rtz_emiss_12_24h">
+		<text>12-24 часа (реальное время)</text>
+	</string>
+	<string id="rtz_emiss_1_2d">
+		<text>1-2 дня (24-48 часов)</text>
+	</string>
+	<string id="rtz_emiss_2_4d">
+		<text>2-4 дня (48-96 часов)</text>
+	</string>
+	<string id="ui_mcm_rtz_fix_boosters_and_effects">
+		<text>Исправление лечения 1:1 и тряски камеры</text>
+	</string>
+	<string id="ui_mcm_rtz_fix_boosters_and_effects_desc">
+		<text>Исправляет ошибку движка X-Ray C++, из-за которой аптечки, бинты и препараты восстанавливали лишь 1/6 своего эффекта при факторе времени 1.0, а тряска камеры от гравитационных аномалий (DAO / Arrival), восстановление пси-здоровья и вывод алкоголя длились в 6 раз дольше положенного.</text>
+	</string>
+
+	<!-- Настройки погоды -->
+	<string id="ui_mcm_rtz_header_weather">
+		<text>Реальная погода в прямом эфире</text>
+	</string>
+	<string id="ui_mcm_rtz_enable_real_weather">
+		<text>Синхронизация погоды с реальной локацией</text>
+	</string>
+	<string id="ui_mcm_rtz_enable_real_weather_desc">
+		<text>Управляет внутриигровыми погодными циклами (ясно, переменная облачность, пасмурно, туман, дождь, гроза) напрямую по метеорологическим данным Open-Meteo для выбранного региона Seasons of the Zone вместо случайной вероятности.</text>
+	</string>
+	<string id="ui_mcm_rtz_weather_sync_interval">
+		<text>Интервал проверки погоды (минуты)</text>
+	</string>
+	<string id="ui_mcm_rtz_weather_sync_interval_desc">
+		<text>Как часто проверять наступление нового часа и изменение реальной погоды.</text>
+	</string>
+
+	<!-- Настройки отдыха -->
+	<string id="ui_mcm_rtz_header_rest">
+		<text>Отдых в реальном времени (замена сна)</text>
+	</string>
+	<string id="ui_mcm_rtz_enable_realtime_rest">
+		<text>Включить отдых в реальном времени</text>
+	</string>
+	<string id="ui_mcm_rtz_enable_realtime_rest_desc">
+		<text>Заменяет мгновенный многочасовой пропуск времени на атмосферный отдых в реальном времени. Экран плавно затемняется, пока персонаж восстанавливает силы за несколько минут без сбоя синхронизации часов.</text>
+	</string>
+	<string id="ui_mcm_rtz_rest_duration">
+		<text>Длительность полного отдыха (минуты)</text>
+	</string>
+	<string id="ui_mcm_rtz_rest_duration_desc">
+		<text>Сколько реальных минут требуется для полного снятия усталости на кровати (по умолчанию 5 минут, макс. 10 минут).</text>
+	</string>
+	<string id="ui_mcm_rtz_enable_campfire_rest">
+		<text>Пассивный отдых у костра</text>
+	</string>
+	<string id="ui_mcm_rtz_enable_campfire_rest_desc">
+		<text>Нахождение рядом с зажжённым костром медленно восстанавливает бодрость в реальном времени, создавая повод перевести дух на безопасных стоянках.</text>
+	</string>
+	<string id="ui_mcm_rtz_campfire_rest_rate">
+		<text>Скорость отдыха у костра</text>
+	</string>
+	<string id="ui_mcm_rtz_campfire_rest_rate_desc">
+		<text>Очков бодрости в секунду при отдыхе у горящего костра (по умолчанию 6, макс. 12; всегда медленнее спального мешка или кровати).</text>
+	</string>
+	<string id="ui_mcm_rtz_wake_on_danger">
+		<text>Прерывать отдых при опасности / уроне</text>
+	</string>
+	<string id="ui_mcm_rtz_wake_on_danger_desc">
+		<text>Мгновенно пробуждает персонажа при атаке, получении урона или приближении врагов.</text>
+	</string>
+	<string id="ui_mcm_rtz_autosave_on_rest">
+		<text>Автосохранение при пробуждении</text>
+	</string>
+	<string id="ui_mcm_rtz_autosave_on_rest_desc">
+		<text>Создаёт автосохранение при завершении или выходе из режима отдыха.</text>
+	</string>
+
+	<!-- Уведомления и диалоговые строки -->
+	<string id="st_rtz_clock_synced">
+		<text>RTZ: Игровые часы синхронизированы с реальным временем (%s)</text>
+	</string>
+	<string id="st_rtz_weather_sync">
+		<text>RTZ: Переход на реальную погоду: %s</text>
+	</string>
+	<string id="st_rtz_resting">
+		<text>Отдых...</text>
+	</string>
+	<string id="st_rtz_btn_wake">
+		<text>Проснуться</text>
+	</string>
+	<string id="st_rtz_rest_comfort_bed">
+		<text>Комфорт: Кровать (+30% к скорости восстановления)</text>
+	</string>
+	<string id="st_rtz_rest_comfort_sleepbag">
+		<text>Комфорт: Спальный мешок (+15% к скорости восстановления)</text>
+	</string>
+	<string id="st_rtz_rest_comfort_campfire">
+		<text>Комфорт: Тёплый костёр</text>
+	</string>
+	<string id="st_rtz_rest_hint">
+		<text>[ Нажмите ПРОБЕЛ или ESC, чтобы проснуться ]</text>
+	</string>
+	<string id="st_rtz_rest_fatigue_recovering">
+		<text>Усталость: %d%% (Восстановление сил...)</text>
+	</string>
+	<string id="st_rtz_rest_fully_rested">
+		<text>Вы полностью отдохнули и полны сил.</text>
+	</string>
+	<string id="st_rtz_rest_woke_up">
+		<text>Вы проснулись после отдыха.</text>
+	</string>
+	<string id="st_rtz_rest_interrupted">
+		<text>Ваш отдых был внезапно прерван опасностью!</text>
+	</string>
+	<string id="st_rtz_danger_nearby">
+		<text>Нельзя отдыхать, пока рядом враги или грозит опасность!</text>
+	</string>
+	<string id="st_rtz_awake">
+		<text>Вы не настолько устали, чтобы ложиться отдыхать.</text>
+	</string>
+
+	<!-- Названия погодных циклов -->
+	<string id="st_rtz_w_clear">
+		<text>Ясно</text>
+	</string>
+	<string id="st_rtz_w_partly">
+		<text>Переменная облачность</text>
+	</string>
+	<string id="st_rtz_w_cloudy">
+		<text>Пасмурно</text>
+	</string>
+	<string id="st_rtz_w_foggy">
+		<text>Густой туман</text>
+	</string>
+	<string id="st_rtz_w_rain">
+		<text>Дождь</text>
+	</string>
+	<string id="st_rtz_w_snow">
+		<text>Снегопад</text>
+	</string>
+	<string id="st_rtz_w_storm">
+		<text>Гроза</text>
+	</string>
+</string_table>
