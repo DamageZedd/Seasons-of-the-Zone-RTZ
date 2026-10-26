@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.4] - 2026-10-26
+
+Fixes the eleven items reported in Issue #3.
+
+- **PBA/DAO clock persists across loads**: the monotonic elapsed clock is saved with the game and re-anchored to the larger of the raw and saved values (`rtz_clock.script`, `rtz_main.script`).
+- **Next emission uses the configured time factor**: the interval is rolled with the target factor instead of the emission's own factor, so emissions no longer land far too late until a reload.
+- **Pre-emission lead scaled**: W.P.W.M.'s `check_pre_blowout` lead is now scaled by the time ratio, so the default 2 game-hour lead is no longer a real-time 2 hours at 1:1.
+- **Rest window closes on load/death**: `actor_on_net_destroy` tears down the rest dialog, effects and volume (`rtz_rest.script`).
+- **Pause catch-up skipped while hurt**: the clock drift correction no longer runs while bleeding or irradiated.
+- **Weather planner no longer freezes**: `check_day_plan` falls back to the original when no real-world cycle is available.
+- **Booster/wound/alcohol compensation works**: uses the `bleeding` setter and `ChangeAlcohol` instead of the non-existent `heal_wounds` and `alcohol`.
+- **24-hour forecast** looks up each planned hour by its own timestamp.
+- **Time-factor sawtooth removed**: GAMMA's surge `main_loop` stored factor is pointed at RTZ's desired factor so it stops resetting to 6 every second.
+- **Rest autosave** now runs after the sleep handlers so it includes the rest's healing.
+- **`gigant_jumper`** `current_level_going_speed` set to 6 (`mod_system_rtz_alife.ltx`).
+
+---
+
 ## [1.0.3] - 2026-10-22
 
 ### 1. Fix Lingering Post-Blowout Weather FX & Immediate Clock Realignment (`rtz_clock.script`)

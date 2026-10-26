@@ -32,7 +32,7 @@
 - **Mod Configuration Menu (MCM)** (optional, recommended for customizing settings)
 
 ### Step 1: Install in Mod Organizer 2 (MO2)
-1. Download **`Seasons.of.the.Zone.-.Real.Time.Zone.RTZ.v1.0.3.zip`** from the [Releases](../../releases) page.
+1. Download **`Seasons.of.the.Zone.-.Real.Time.Zone.RTZ.v1.0.4.zip`** from the [Releases](../../releases) page.
 2. In **Mod Organizer 2**, click **Install a new mod from an archive** and select the downloaded `.zip`.
 3. Place **`Seasons of the Zone - Real Time Zone (RTZ)`** anywhere **below** `Seasons of the Zone` in your MO2 left pane (so it loads after *Seasons of the Zone*) and check the box to enable it.
 
