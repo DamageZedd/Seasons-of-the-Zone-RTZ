@@ -1,8 +1,8 @@
 # Changelog
 
-## [1.0.4] - 2026-10-26
+## [1.0.5] - 2026-10-26
 
-Fixes the eleven items reported in Issue #3.
+Fixes the eleven items reported in Issue #3. (Supersedes the v1.0.4 tag, which was published with files missing; use v1.0.5.)
 
 - **PBA/DAO clock persists across loads**: the monotonic elapsed clock is saved with the game and re-anchored to the larger of the raw and saved values (`rtz_clock.script`, `rtz_main.script`).
 - **Next emission uses the configured time factor**: the interval is rolled with the target factor instead of the emission's own factor, so emissions no longer land far too late until a reload.
