@@ -27,6 +27,12 @@
 	<string id="ui_mcm_rtz_sync_clock_desc">
 		<text>On load and level changes, aligns the in-game clock directly with your computer's real-world OS time (hour and minute).</text>
 	</string>
+	<string id="ui_mcm_rtz_use_place_time">
+		<text>Use Seasons of the Zone Location Time</text>
+	</string>
+	<string id="ui_mcm_rtz_use_place_time_desc">
+		<text>The game clock and the hour-by-hour weather follow the local time of the place set in Seasons of the Zone's configure.bat, not your PC's clock. The place's time zone is refreshed on every play.bat launch. Turn off to follow your PC's clock.</text>
+	</string>
 	<string id="ui_mcm_rtz_lock_time_factor">
 		<text>Enforce 1:1 Real-Time Speed</text>
 	</string>

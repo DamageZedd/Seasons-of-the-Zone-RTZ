@@ -1,16 +1,17 @@
 """Real Time Zone (RTZ) - Companion Hourly Weather Fetcher & Installer
 
 Fetches live hour-by-hour weather from Open-Meteo for the location configured in
-Seasons of the Zone (or Chornobyl by default), maps each forecast hour to the
-PC's local wall-clock hour (0..23) so the sky matches what is happening at the
-configured location at that exact moment, and writes gamedata\\configs\\rtz_weather.ltx.
+Seasons of the Zone (or Chornobyl by default), maps each forecast hour to that
+place's own wall-clock hour (0..23), and writes gamedata\\configs\\rtz_weather.ltx
+with the place's time zone and UTC offset. RTZ sets the game clock to the place's
+time from that offset, so the clock and the sky follow the place, not the PC.
 
 Note: Seasons of the Zone 2.11.0+ natively writes an [hourly] section mapped to
-the PC's clock in season_weather.ltx, which RTZ reads first. This script serves
-as an optional standalone fallback for older Seasons versions.
+the PC's clock in season_weather.ltx. RTZ reads it too, shifted from the PC's hours
+to the place's.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import shutil
@@ -117,12 +118,13 @@ def get_place():
 
 
 def fetch_hourly(lat, lon):
-    """Fetches hourly forecast in UTC (GMT) so timestamps map cleanly to PC local clock hours."""
+    """Fetches the hourly forecast in the place's own time zone (timezone=auto), so the hours are
+    the place's wall-clock hours and the reply carries its UTC offset and time zone name."""
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
         f"&hourly=weather_code,temperature_2m,precipitation"
-        f"&timezone=GMT&forecast_days=2"
+        f"&timezone=auto&forecast_days=2"
     )
     req = urllib.request.Request(url, headers={"User-Agent": "RTZ-WeatherFetcher/1.0.2"})
     with urllib.request.urlopen(req, timeout=12) as response:
@@ -193,28 +195,29 @@ def main():
         print("  RTZ: No hourly data in response.")
         return 1
 
-    now_local = datetime.now()
-    today_str = now_local.strftime("%Y-%m-%d")
-    now_utc_ts = datetime.now(timezone.utc).timestamp()
+    # The place's wall clock: RTZ sets the game clock to it, and keys these hours by it
+    utc_offset = int(data.get("utc_offset_seconds") or 0)
+    tz_name = str(data.get("timezone") or "GMT")
+    place_now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=utc_offset)
+    today_str = place_now.strftime("%Y-%m-%d")
 
-    # Map the next 24 hours from now to the PC's local wall-clock hours (0..23)
+    # Map the next 24 hours from now to the place's wall-clock hours (0..23)
     mapped_hours = {}
     for i, t_str in enumerate(times):
         try:
-            dt_utc = datetime.strptime(t_str, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
-            ts = dt_utc.timestamp()
+            at = datetime.strptime(t_str, "%Y-%m-%dT%H:%M")   # already the place's local time
         except ValueError:
             continue
         # Pick the 24 hourly slots covering [now - 1h, now + 23h]
-        if -3600 <= (ts - now_utc_ts) < 23 * 3600:
-            pc_hour = datetime.fromtimestamp(ts).hour
-            if pc_hour not in mapped_hours:
+        ahead = (at - place_now).total_seconds()
+        if -3600 <= ahead < 23 * 3600:
+            if at.hour not in mapped_hours:
                 code = codes[i] if i < len(codes) else 3
                 temp = temps[i] if i < len(temps) else "?"
-                mapped_hours[pc_hour] = (code_to_cycle(code), temp)
+                mapped_hours[at.hour] = (code_to_cycle(code), temp)
 
     lines = [
-        "; Real Time Zone (RTZ) - Live Hourly Weather Data (Mapped to PC Clock)",
+        "; Real Time Zone (RTZ) - Live Hourly Weather Data (Mapped to the place's clock)",
         "; Generated automatically from Open-Meteo",
         "",
         "[place]",
@@ -222,6 +225,8 @@ def main():
         f"lat  = {place['lat']}",
         f"lon  = {place['lon']}",
         f"date = {today_str}",
+        f"timezone   = {tz_name}",
+        f"utc_offset = {utc_offset}",
         "",
         "[hourly]",
     ]
@@ -244,7 +249,7 @@ def main():
     out_file = os.path.join(rtz_cfg_dir, "rtz_weather.ltx")
     with open(out_file, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"  RTZ: Updated 24-hour live weather forecast ({place['name']}) mapped to PC clock.")
+    print(f"  RTZ: Updated 24-hour live weather forecast for {place['name']} ({tz_name}, UTC{utc_offset / 3600:+g}).")
     return 0
 
 

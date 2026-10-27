@@ -6,6 +6,7 @@
 local defaults = {
     ["enabled"]                    = true,
     ["sync_clock"]                 = true,
+    ["use_place_time"]             = true,
     ["lock_time_factor"]           = true,
     ["time_factor_val"]            = 1.0,
     ["safeguard_vitals"]           = true,
@@ -53,6 +54,7 @@ function on_mcm_load()
             { id = "divider_clock", type = "line" },
             { id = "header_clock", type = "desc", text = "ui_mcm_rtz_header_clock", clr = {255, 238, 155, 20} },
             { id = "sync_clock", type = "check", val = 1, def = defaults["sync_clock"] },
+            { id = "use_place_time", type = "check", val = 1, def = defaults["use_place_time"] },
             { id = "lock_time_factor", type = "check", val = 1, def = defaults["lock_time_factor"] },
             { id = "time_factor_val", type = "track", val = 2, min = 1.0, max = 10.0, step = 0.5, def = defaults["time_factor_val"] },
             { id = "safeguard_vitals", type = "check", val = 1, def = defaults["safeguard_vitals"] },

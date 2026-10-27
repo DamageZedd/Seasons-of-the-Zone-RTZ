@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.7] - 2026-10-27
+
+### Clock & Weather Follow Your Seasons of the Zone Location
+- **Problem**: RTZ set the game clock to your PC's clock, and the hour-by-hour sky was keyed to your PC's hours. With a place in Seasons of the Zone's `configure.bat` in another time zone (say Chornobyl while you play in Canada), the in-game time and the sky were for your PC's time zone, not the place's.
+- **Fix**: `_tools\fetch_rtz_hourly.py` now asks Open-Meteo for the place's time zone and writes it (`timezone`, `utc_offset`) to `rtz_weather.ltx` on every `play.bat` launch, with the hourly sky keyed by the place's own hours. RTZ syncs the game clock to the place's local time, reads Seasons' `[hourly]` (keyed by the PC's hours) shifted to the place's hours, and keys the daily `[forecast]` by the place's date. The rest screen's clock shows the place's time too.
+- New MCM option **Use Seasons of the Zone Location Time** (on by default). Turn it off to follow your PC's clock. If the place's time zone isn't known yet (before the first launch through `play.bat`), RTZ uses your PC's clock.
+- **Changing the place to another time zone** moves the game clock once on the next load: forward to the new time, or, if the new place is up to 4 hours behind, the clock is slowed until it matches.
+- **After updating, run `setup_rtz.bat` once more** so `play.bat` uses the new fetcher.
+
+---
+
 ## [1.0.6] - 2026-10-27
 
 ### Real-Time Emissions (`rtz_clock.script`, new MCM option, on by default)

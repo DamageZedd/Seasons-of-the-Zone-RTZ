@@ -93,6 +93,61 @@ local function get_game_hms()
     return h, m, s
 end
 
+-- =======================================================================================
+-- Place Time
+-- The game clock follows the wall clock of the place set in Seasons of the Zone's configure.bat,
+-- not the PC's. _tools\fetch_rtz_hourly.py writes the place's UTC offset to rtz_weather.ltx's
+-- [place] on every play.bat launch. Without it (or with `use_place_time` off) the PC's clock is used.
+-- =======================================================================================
+
+local place_offset_cache = nil
+
+--- The configured place's UTC offset in seconds, or nil when rtz_weather.ltx doesn't have one
+function get_place_utc_offset()
+    if place_offset_cache == nil then
+        place_offset_cache = false
+        pcall(function()
+            local ini = ini_file("rtz_weather.ltx")
+            if ini and ini:section_exist("place") and ini:line_exist("place", "utc_offset") then
+                local off = tonumber(ini:r_string_ex("place", "utc_offset"))
+                if off and math.abs(off) <= 14 * 3600 then
+                    place_offset_cache = off
+                end
+            end
+        end)
+    end
+    return place_offset_cache or nil
+end
+
+--- The PC's own UTC offset in seconds at `ts`
+function get_pc_utc_offset(ts)
+    ts = ts or os.time()
+    local lt, ut = os.date("*t", ts), os.date("!*t", ts)
+    ut.isdst = lt.isdst
+    return os.time(lt) - os.time(ut)
+end
+
+--- The UTC offset the game clock follows: the place's when known and enabled, else the PC's
+function get_clock_utc_offset(ts)
+    if rtz_mcm.get_config("use_place_time") then
+        local off = get_place_utc_offset()
+        if off then return off end
+    end
+    return get_pc_utc_offset(ts)
+end
+
+--- Wall-clock date & time (os.date "*t" fields) of the clock RTZ follows, at UTC epoch `ts` (default now)
+function place_date(ts)
+    ts = ts or os.time()
+    return os.date("!*t", ts + get_clock_utc_offset(ts))
+end
+
+--- Whole hours the followed clock is ahead of the PC's (to read data keyed by the PC's hours)
+function place_hours_ahead_of_pc(ts)
+    local diff = get_clock_utc_offset(ts) - get_pc_utc_offset(ts)
+    return math.floor(diff / 3600 + 0.5)
+end
+
 --- Returns the current ratio (cur_tf / 6.0) when vanilla scale preservation is active, or 1.0 otherwise
 function get_vanilla_scale_ratio()
     if not rtz_mcm.get_config("enabled") or not rtz_mcm.get_config("vanilla_vitals_alife_scale") then
@@ -1213,7 +1268,7 @@ end
 
 --- Computes forward difference in seconds (0..86399) and signed difference (-43200..+43200)
 local function get_clock_diff_seconds()
-    local real = os.date("*t")
+    local real = place_date()
     if not real then return 0, nil, 0 end
 
     local real_sec = real.hour * 3600 + real.min * 60 + real.sec

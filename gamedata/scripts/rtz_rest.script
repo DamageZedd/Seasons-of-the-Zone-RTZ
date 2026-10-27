@@ -172,7 +172,7 @@ function UIRtzRest:Update()
         self.btn_wake:Show(not is_forced_lock_active())
     end
 
-    local real = os.date("*t")
+    local real = (rtz_clock and rtz_clock.place_date) and rtz_clock.place_date() or os.date("*t")
     if real and self.time_text then
         local t_str = string.format("%02d:%02d:%02d", real.hour, real.min, real.sec)
         self.time_text:SetText(t_str)

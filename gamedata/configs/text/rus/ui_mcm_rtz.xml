@@ -27,6 +27,12 @@
 	<string id="ui_mcm_rtz_sync_clock_desc">
 		<text>При загрузке и смене локаций выравнивает внутриигровое время по системным часам вашего ПК (часы и минуты).</text>
 	</string>
+	<string id="ui_mcm_rtz_use_place_time">
+		<text>Время места из Seasons of the Zone</text>
+	</string>
+	<string id="ui_mcm_rtz_use_place_time_desc">
+		<text>Игровые часы и погода по часам следуют местному времени места, выбранного в configure.bat Seasons of the Zone, а не часам компьютера. Часовой пояс места обновляется при каждом запуске через play.bat. Отключите, чтобы использовать часы компьютера.</text>
+	</string>
 	<string id="ui_mcm_rtz_lock_time_factor">
 		<text>Фиксировать скорость 1:1</text>
 	</string>

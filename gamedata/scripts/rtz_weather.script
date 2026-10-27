@@ -36,6 +36,22 @@ local function hourly_fresh(ini, at_ts)
     return age >= 0 and age < 86400
 end
 
+--- Wall-clock date & time of the clock RTZ follows (the Seasons place's, see rtz_clock "Place Time")
+local function place_t(ts)
+    if rtz_clock and rtz_clock.place_date then
+        return rtz_clock.place_date(ts)
+    end
+    return os.date("*t", ts or os.time())
+end
+
+--- Whole hours the followed clock is ahead of the PC's clock
+local function hours_ahead_of_pc()
+    if rtz_clock and rtz_clock.place_hours_ahead_of_pc then
+        return rtz_clock.place_hours_ahead_of_pc()
+    end
+    return 0
+end
+
 --- Normalizes a weather cycle name against the active WeatherManager's presets
 local function normalize_cycle(mgr, cycle)
     if not cycle or not mgr or not mgr.presets then return nil end
@@ -68,9 +84,10 @@ end
 local function get_sotz_days(sotz_ini, at_ts)
     if not sotz_ini then return nil, nil end
 
+    -- [forecast] is keyed by the place's dates
     local now_ts = at_ts or os.time()
-    local real_today = os.date("*t", now_ts)
-    local real_next  = os.date("*t", now_ts + 86400)
+    local real_today = place_t(now_ts)
+    local real_next  = place_t(now_ts + 86400)
 
     local today_data, next_data = nil, nil
     if real_today then
@@ -124,8 +141,9 @@ local BRIDGE_CYCLE = {
 
 --- Retrieves the live weather cycle for `target_hour` (0..23):
 --- 0) Respects `sotz_api.weather_hold()` if Seasons of the Zone is holding the sky for a remembrance day / anniversary
---- 1) Reads Seasons of the Zone 2.11.0+'s `[hourly]` section in `season_weather.ltx` (mapped to the PC's clock)
---- 2) Reads optional `rtz_weather.ltx` `[hourly]` if generated today by `_tools/fetch_rtz_hourly.py`
+--- 1) Reads Seasons of the Zone 2.11.0+'s `[hourly]` section in `season_weather.ltx` (keyed by the PC's
+---    hours, so `target_hour` on the place's clock is shifted to the PC's hour first)
+--- 2) Reads `rtz_weather.ltx` `[hourly]` (keyed by the place's hours) if generated today by `_tools/fetch_rtz_hourly.py`
 --- 3) Falls back to diurnal modeling from `season_weather.ltx` `[forecast]` / `[weather]`
 --- `hours_ahead` (optional) is how far past now `target_hour` lies, so forecast dates are keyed by that hour's own timestamp
 function get_real_cycle(target_hour, hours_ahead)
@@ -143,8 +161,9 @@ function get_real_cycle(target_hour, hours_ahead)
     -- 1. Check Seasons of the Zone's season_weather.ltx [hourly] first (native in Seasons 2.11.0+, mapped to PC clock)
     -- Only use [hourly] if it was generated within the last 24 hours; otherwise fall back to date-keyed [forecast]
     if sotz_ini and hourly_fresh(sotz_ini) then
-        local cycle = sotz_ini:r_string_ex("hourly", tostring(cur_h))
-                   or sotz_ini:r_string_ex("hourly", "h" .. tostring(cur_h))
+        local pc_h = (cur_h - hours_ahead_of_pc()) % 24
+        local cycle = sotz_ini:r_string_ex("hourly", tostring(pc_h))
+                   or sotz_ini:r_string_ex("hourly", "h" .. tostring(pc_h))
         if cycle and cycle ~= "" then
             return cycle:match("^[%w_]+")
         end
@@ -152,7 +171,7 @@ function get_real_cycle(target_hour, hours_ahead)
 
     -- 2. Fallback: Check optional rtz_weather.ltx if it was generated for today
     if rtz_ini and rtz_ini:section_exist("hourly") then
-        local now_d = os.date("*t")
+        local now_d = place_t()
         local today_key = now_d and string.format("%04d-%02d-%02d", now_d.year, now_d.month, now_d.day) or nil
         local file_date = rtz_ini:section_exist("place") and rtz_ini:r_string_ex("place", "date") or nil
         if not today_key or file_date == today_key then
