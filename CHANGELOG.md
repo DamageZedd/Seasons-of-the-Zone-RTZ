@@ -4,10 +4,15 @@
 
 ### Real-Time Emissions (`rtz_clock.script`, new MCM option, on by default)
 - **Problem**: Anomaly's surge and psi-storm managers switch the clock to 10x for the whole event (~4.6 real minutes), so every emission left the game clock ~40 minutes ahead of the wall clock and RTZ then had to crawl at 0.1x for ~45 real minutes to catch up.
-- **Fix**: The clock now stays at RTZ's factor during emissions and psi-storms. While the surge script updates, its timers see the elapsed time a 10x clock would give, so sirens, rumble, waves, damage and the end land at the same real moments as vanilla, and the emission lasts the same ~4.6 minutes. The blowout / psi-storm sky (`fx_blowout_*`, `fx_psi_storm_*`) is advanced at 10x with `level.start_weather_fx_from_time`, so it builds up exactly as in vanilla. Works across save/load mid-emission. Turn off **Real-Time Emissions** in MCM for the vanilla sped-up emission.
+- **Fix**: The clock now stays at RTZ's factor during emissions and psi-storms. While the surge script updates, its timers see the elapsed time a 10x clock would give, so sirens, rumble, waves, damage and the end land at the same real moments as vanilla, and the emission lasts as long as vanilla's (3m42s with GAMMA's surge manager). Works across save/load mid-emission. Turn off **Real-Time Emissions** in MCM for the vanilla sped-up emission.
+- **Smooth emission sky**: the blowout and psi-storm skies are timed for a 10x clock. New `_toolstz_build_fx.py` writes a copy of each (`fx_blowout_day_rtz.ltx` and so on) from whichever mod wins it in your MO2 profile, with its keyframe times divided by 10, and RTZ plays those copies during real-time emissions. The engine blends them exactly as it blends vanilla's, and they fade out on their own after the emission as vanilla's do. `play.bat` rebuilds them on every launch, so they follow your weather mod. Without the copies, RTZ restarts the original effect ahead every 100 ms instead.
+- **After updating, run `setup_rtz.bat` once more** so `play.bat`'s RTZ step gets the new sky builder.
 
 ### Pre-Emission Crows at Vanilla Pacing
 - Pre-emission sounds keyed to game seconds (e.g. Preblowout Murder's crows, 360 game-seconds out) played over 6 real minutes at 1:1. The time-to-emission they see is now scaled, so they play over the last real minute, as in vanilla.
+
+### Hourly Weather Written to the Enabled Copy
+- With more than one copy of RTZ in `mods`, the hourly fetcher wrote `rtz_weather.ltx` into the first one alphabetically, even a disabled one. It now writes into the copy your MO2 profile has enabled.
 
 ### Readable Logs
 - RTZ log lines printed `%d` / `%02d` literally because the engine's `printf` only substitutes `%s`. All RTZ modules now format their messages first.

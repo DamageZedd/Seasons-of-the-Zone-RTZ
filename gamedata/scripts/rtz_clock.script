@@ -39,8 +39,10 @@ local orig_pba_get_time_elapsed = nil
 -- Real-time emission pacing state (see "Real-Time Emissions" below)
 local rt_emission = nil
 local last_wfx_sync = 0
-local WFX_SYNC_MS = 1000
+local WFX_SYNC_MS = 100 -- fallback pacing of an original weather FX when RTZ's copy is missing
 local EMISSION_TF_FALLBACK = 10
+local PACED_FX_SUFFIX = "_rtz"
+local paced_fx_cache = {}
 
 local function printf_rtz(fmt, ...)
     -- The engine's printf only substitutes %s, so format here and pass the finished line through
@@ -814,7 +816,10 @@ end
 -- clock stays at RTZ's factor and the event is paced from real time instead:
 --   * the surge's own timers (diff_sec / diff_game_sec) see the elapsed time they would at 10x,
 --     so sirens, waves, damage and the end land at the same real moments as vanilla
---   * the blowout / psi-storm weather FX is advanced at 10x, so the sky still builds up
+--   * the blowout / psi-storm sky plays RTZ's copy of the effect with its keyframes 10x closer
+--     (<name>_rtz.ltx, built from the winning mod's file by _tools\rtz_build_fx.py on each
+--     play.bat launch), so the engine blends it as smoothly as vanilla. Without a copy, the
+--     original effect is restarted ahead every 100 ms instead.
 -- =======================================================================================
 
 local function realtime_emissions_on()
@@ -845,6 +850,59 @@ local function end_realtime_emission(mgr)
     end
 end
 
+--- RTZ's 10x-compressed copy of a weather FX, or nil when it isn't installed
+local function paced_fx_name(name)
+    if type(name) ~= "string" then return nil end
+    local cached = paced_fx_cache[name]
+    if cached == nil then
+        cached = false
+        pcall(function()
+            local fs = getFS()
+            if fs and fs:exist("$game_config$", "environment\\weather_effects\\" .. name .. PACED_FX_SUFFIX .. ".ltx") then
+                cached = name .. PACED_FX_SUFFIX
+            end
+        end)
+        paced_fx_cache[name] = cached
+    end
+    return cached or nil
+end
+
+local function is_paced_fx(name)
+    return type(name) == "string" and name:sub(-#PACED_FX_SUFFIX) == PACED_FX_SUFFIX
+end
+
+--- Runs a manager's update with every weather FX it starts swapped for RTZ's compressed copy
+local function call_with_paced_fx(org_update, self)
+    local org_set_wfx = level.set_weather_fx
+    level.set_weather_fx = function(name, ...)
+        return org_set_wfx(paced_fx_name(name) or name, ...)
+    end
+    local ok, err = pcall(org_update, self)
+    level.set_weather_fx = org_set_wfx
+    if not ok then
+        error(err, 0)
+    end
+end
+
+--- Stops a leftover emission sky and returns to the planned weather. RTZ's compressed copies
+--- are left to fade out on their own, exactly as vanilla's effect does after an emission.
+local function clear_emission_sky()
+    pcall(function()
+        if level.is_wfx_playing and level.is_wfx_playing() then
+            if is_paced_fx(level.get_weather()) then
+                return
+            end
+            level.stop_weather_fx()
+        end
+        if level_weathers and level_weathers.get_weather_manager then
+            local wm = level_weathers.get_weather_manager()
+            if wm and wm.forced_weather_change then
+                wm:forced_weather_change()
+            end
+        end
+    end)
+end
+
 --- Keeps the clock at RTZ's factor after a manager's update (start() inside it re-applies 10x)
 local function reassert_time_factor()
     local want = get_desired_time_factor()
@@ -873,7 +931,7 @@ local function surge_update_realtime(self, org_update, event_tf)
         printf_rtz("Real-time emissions unavailable on this engine; using vanilla 10x emission.")
         return org_update(self)
     end
-    local ok, err = pcall(org_update, self)
+    local ok, err = pcall(call_with_paced_fx, org_update, self)
     level.get_time_factor = org_get_tf
     if not ok then
         error(err, 0)
@@ -926,6 +984,8 @@ local function sync_emission_wfx()
             return
         end
         local name = level.get_weather()
+        -- RTZ's compressed copies already play at emission pace: only originals need pacing
+        if is_paced_fx(name) then return end
         if type(name) ~= "string" or not name:find("^fx_") then return end
         local v = level.get_wfx_time()
         local r = rt_elapsed(rt)
@@ -1021,25 +1081,15 @@ local function install_alife_hooks()
             end
         end
 
-        -- Wrap CSurgeManager.end_surge so lingering blowout weather FX (50 in-game mins) stops immediately
-        -- instead of lasting 6x longer in real time at 1:1 time_factor, and re-syncs the clock to wall-clock time
+        -- Wrap CSurgeManager.end_surge so a lingering original blowout FX (50 in-game mins, many real
+        -- minutes at 1x) stops immediately, and re-sync the clock to wall-clock time
         if surge_manager.CSurgeManager.end_surge then
             local org_end_surge = surge_manager.CSurgeManager.end_surge
             surge_manager.CSurgeManager.end_surge = function(self, manual)
                 end_realtime_emission(self)
                 org_end_surge(self, manual)
                 if rtz_mcm.get_config("enabled") then
-                    pcall(function()
-                        if level and level.is_wfx_playing and level.is_wfx_playing() then
-                            level.stop_weather_fx()
-                        end
-                        if level_weathers and level_weathers.get_weather_manager then
-                            local wm = level_weathers.get_weather_manager()
-                            if wm and wm.forced_weather_change then
-                                wm:forced_weather_change()
-                            end
-                        end
-                    end)
+                    clear_emission_sky()
                     enforce_time_factor()
                     sync_to_real_time(true)
                 end
@@ -1093,13 +1143,12 @@ local function install_alife_hooks()
                 if not (rt_emission and rawequal(rt_emission.mgr, self)) then
                     begin_realtime_emission(self, psi_event_tf, false)
                 end
-                local res = org_psi_update(self)
+                call_with_paced_fx(org_psi_update, self)
                 if self.started then
                     reassert_time_factor()
                 else
                     end_realtime_emission(self)
                 end
-                return res
             end
         end
 
@@ -1110,17 +1159,7 @@ local function install_alife_hooks()
                 end_realtime_emission(self)
                 org_psi_finish(self, manual)
                 if rtz_mcm.get_config("enabled") then
-                    pcall(function()
-                        if level and level.is_wfx_playing and level.is_wfx_playing() then
-                            level.stop_weather_fx()
-                        end
-                        if level_weathers and level_weathers.get_weather_manager then
-                            local wm = level_weathers.get_weather_manager()
-                            if wm and wm.forced_weather_change then
-                                wm:forced_weather_change()
-                            end
-                        end
-                    end)
+                    clear_emission_sky()
                     enforce_time_factor()
                     sync_to_real_time(true)
                 end

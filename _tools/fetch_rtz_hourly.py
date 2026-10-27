@@ -53,10 +53,28 @@ def code_to_cycle(code):
     return "cloudy"
 
 
-def find_mod_folder(marker, fallback_name):
-    """Finds a mod folder in mods/ by its marker script, regardless of what MO2 named the folder."""
+def enabled_mods():
+    """The MO2 profile's enabled mods, highest priority first (the top of modlist.txt wins)."""
     try:
-        for name in os.listdir(MODS):
+        sys.path.insert(0, HERE)
+        import rtz_build_fx
+        return rtz_build_fx.enabled_mods(GAMMA)
+    except Exception:
+        return []
+    finally:
+        if sys.path and sys.path[0] == HERE:
+            sys.path.pop(0)
+
+
+def find_mod_folder(marker, fallback_name):
+    """Finds a mod folder in mods/ by its marker script, regardless of what MO2 named the folder.
+    An enabled copy wins over a disabled one, so an old copy left in mods/ is not written to."""
+    for name in enabled_mods():
+        folder = os.path.join(MODS, name)
+        if os.path.isfile(os.path.join(folder, *marker)):
+            return folder
+    try:
+        for name in sorted(os.listdir(MODS)):
             folder = os.path.join(MODS, name)
             if os.path.isfile(os.path.join(folder, *marker)):
                 return folder
@@ -120,6 +138,10 @@ def install_hook():
     if os.path.normcase(src_script) != os.path.normcase(dst_script):
         shutil.copy2(src_script, dst_script)
         print(f"  + Installed {dst_script}")
+        src_fx = os.path.join(HERE, "rtz_build_fx.py")
+        if os.path.isfile(src_fx):
+            shutil.copy2(src_fx, os.path.join(tools_dir, "rtz_build_fx.py"))
+            print(f"  + Installed {os.path.join(tools_dir, 'rtz_build_fx.py')}")
 
     play_bat = os.path.join(GAMMA, "play.bat")
     if os.path.isfile(play_bat):
@@ -141,6 +163,18 @@ def install_hook():
 def main():
     if "--install" in sys.argv:
         install_hook()
+
+    # Real-time emission skies: rebuilt every launch so they follow the installed weather mod.
+    # Never fatal: without them RTZ paces the original effects instead.
+    try:
+        sys.path.insert(0, HERE)
+        import rtz_build_fx
+        rtz_build_fx.build(GAMMA)
+    except Exception as e:
+        print(f"  RTZ: Could not build real-time emission skies: {e}")
+    finally:
+        if sys.path and sys.path[0] == HERE:
+            sys.path.pop(0)
 
     place = get_place()
     print(f"  RTZ: Fetching hourly weather for {place['name']} ({place['lat']:.4f}, {place['lon']:.4f})...")
