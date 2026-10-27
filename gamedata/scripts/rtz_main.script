@@ -6,7 +6,8 @@
 local initialized = false
 
 local function printf_rtz(fmt, ...)
-    printf("[RTZ Main] " .. fmt, ...)
+    local ok, msg = pcall(string.format, fmt, ...)
+    printf("[RTZ Main] %s", ok and msg or fmt)
 end
 
 function actor_on_first_update()
@@ -15,7 +16,7 @@ function actor_on_first_update()
         return
     end
 
-    printf_rtz("Initializing Real Time Zone (RTZ) v1.0.5...")
+    printf_rtz("Initializing Real Time Zone (RTZ) v1.0.6...")
 
     if rtz_clock and rtz_clock.init then
         rtz_clock.init()

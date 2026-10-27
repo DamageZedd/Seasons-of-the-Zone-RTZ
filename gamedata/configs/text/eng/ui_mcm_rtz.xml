@@ -111,6 +111,13 @@
 	<string id="rtz_emiss_2_4d">
 		<text>2-4 Days (48-96 Hours)</text>
 	</string>
+	<string id="ui_mcm_rtz_realtime_emissions">
+		<text>Real-Time Emissions</text>
+	</string>
+	<string id="ui_mcm_rtz_realtime_emissions_desc">
+		<text>Emissions and psi-storms last as long as vanilla, but the game clock is no longer sped up 10x, so it stays in step with real time. The emission sky still builds up at vanilla pace. Turn off to use the vanilla sped-up emission.</text>
+	</string>
+
 	<string id="ui_mcm_rtz_fix_boosters_and_effects">
 		<text>1:1 Medkit Healing &amp; Anomaly Shake Fix</text>
 	</string>

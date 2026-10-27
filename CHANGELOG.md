@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.6] - 2026-10-27
+
+### Real-Time Emissions (`rtz_clock.script`, new MCM option, on by default)
+- **Problem**: Anomaly's surge and psi-storm managers switch the clock to 10x for the whole event (~4.6 real minutes), so every emission left the game clock ~40 minutes ahead of the wall clock and RTZ then had to crawl at 0.1x for ~45 real minutes to catch up.
+- **Fix**: The clock now stays at RTZ's factor during emissions and psi-storms. While the surge script updates, its timers see the elapsed time a 10x clock would give, so sirens, rumble, waves, damage and the end land at the same real moments as vanilla, and the emission lasts the same ~4.6 minutes. The blowout / psi-storm sky (`fx_blowout_*`, `fx_psi_storm_*`) is advanced at 10x with `level.start_weather_fx_from_time`, so it builds up exactly as in vanilla. Works across save/load mid-emission. Turn off **Real-Time Emissions** in MCM for the vanilla sped-up emission.
+
+### Pre-Emission Crows at Vanilla Pacing
+- Pre-emission sounds keyed to game seconds (e.g. Preblowout Murder's crows, 360 game-seconds out) played over 6 real minutes at 1:1. The time-to-emission they see is now scaled, so they play over the last real minute, as in vanilla.
+
+### Readable Logs
+- RTZ log lines printed `%d` / `%02d` literally because the engine's `printf` only substitutes `%s`. All RTZ modules now format their messages first.
+
+---
+
 ## [1.0.5] - 2026-10-26
 
 Fixes the eleven items reported in Issue #3. (Supersedes the v1.0.4 tag, which was published with files missing; use v1.0.5.)

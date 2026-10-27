@@ -36,8 +36,16 @@ local rtz_elapsed_saved = nil
 local orig_drx_get_time_elapsed = nil
 local orig_pba_get_time_elapsed = nil
 
+-- Real-time emission pacing state (see "Real-Time Emissions" below)
+local rt_emission = nil
+local last_wfx_sync = 0
+local WFX_SYNC_MS = 1000
+local EMISSION_TF_FALLBACK = 10
+
 local function printf_rtz(fmt, ...)
-    printf("[RTZ Clock] " .. fmt, ...)
+    -- The engine's printf only substitutes %s, so format here and pass the finished line through
+    local ok, msg = pcall(string.format, fmt, ...)
+    printf("[RTZ Clock] %s", ok and msg or fmt)
 end
 
 --- Helper to read a local upvalue by name from a function
@@ -799,6 +807,144 @@ function scale_initial_emission_deltas()
     end)
 end
 
+-- =======================================================================================
+-- Real-Time Emissions
+-- Vanilla surge & psi-storm managers switch the clock to 10x for the whole event, which left
+-- the game clock ~40 minutes ahead of the wall clock afterwards. With `realtime_emissions` the
+-- clock stays at RTZ's factor and the event is paced from real time instead:
+--   * the surge's own timers (diff_sec / diff_game_sec) see the elapsed time they would at 10x,
+--     so sirens, waves, damage and the end land at the same real moments as vanilla
+--   * the blowout / psi-storm weather FX is advanced at 10x, so the sky still builds up
+-- =======================================================================================
+
+local function realtime_emissions_on()
+    return rtz_mcm.get_config("enabled") and rtz_mcm.get_config("realtime_emissions") and true or false
+end
+
+local function rt_elapsed(rt)
+    return math.max(0, time_global() - rt.tg0) * 0.001
+end
+
+--- Starts real-time pacing for an emission that just started, or one found running after a load.
+--- `fake_inited`: the manager's inited_time is kept shifted back by `event_tf` x real elapsed time.
+local function begin_realtime_emission(mgr, event_tf, fake_inited)
+    local real_el = 0
+    pcall(function()
+        if mgr.inited_time and game and game.get_game_time then
+            local div = fake_inited and event_tf or level.get_time_factor()
+            real_el = math.max(0, game.get_game_time():diffSec(mgr.inited_time) / math.max(0.1, div))
+        end
+    end)
+    rt_emission = { mgr = mgr, tf = event_tf, tg0 = time_global() - real_el * 1000 }
+    level.set_time_factor(get_desired_time_factor())
+end
+
+local function end_realtime_emission(mgr)
+    if rt_emission and rt_emission.mgr == mgr then
+        rt_emission = nil
+    end
+end
+
+--- Keeps the clock at RTZ's factor after a manager's update (start() inside it re-applies 10x)
+local function reassert_time_factor()
+    local want = get_desired_time_factor()
+    if math.abs(level.get_time_factor() - want) > 0.01 then
+        level.set_time_factor(want)
+    end
+end
+
+--- Runs a started surge's update with its timers paced from real time
+local function surge_update_realtime(self, org_update, event_tf)
+    if not (rt_emission and rt_emission.mgr == self) then
+        begin_realtime_emission(self, event_tf, true)
+    end
+    local rt = rt_emission
+    local now_gt = game.get_game_time()
+    self.inited_time = make_offset_ctime(now_gt, math.floor(rt_elapsed(rt) * rt.tf))
+
+    -- diff_sec = game seconds / get_time_factor() must read as real seconds: report the event factor
+    local org_get_tf = level.get_time_factor
+    level.get_time_factor = function() return rt.tf end
+    if level.get_time_factor() ~= rt.tf then
+        -- The engine namespace refused the override: fall back to the vanilla 10x emission
+        level.get_time_factor = org_get_tf
+        rt_emission = nil
+        level.set_time_factor(event_tf)
+        printf_rtz("Real-time emissions unavailable on this engine; using vanilla 10x emission.")
+        return org_update(self)
+    end
+    local ok, err = pcall(org_update, self)
+    level.get_time_factor = org_get_tf
+    if not ok then
+        error(err, 0)
+    end
+    if self.started then
+        reassert_time_factor()
+    else
+        end_realtime_emission(self)
+    end
+end
+
+--- Runs a waiting surge's update with the time-to-emission stretched by 1/ratio, so pre-emission
+--- sounds keyed to game seconds (e.g. Preblowout Murder's crows, 360 game-seconds out) play at vanilla
+--- real-time pacing instead of 6x earlier
+local function surge_update_presurge(self, org_update)
+    local ratio = get_target_scale_ratio()
+    if ratio >= 0.999 or not (self._delta and self.last_surge_time and game and game.get_game_time) then
+        return org_update(self)
+    end
+    local since = game.get_game_time():diffSec(self.last_surge_time)
+    local real_delta = self._delta
+    local temp_delta = since + (real_delta - since) / ratio
+    self._delta = temp_delta
+    local ok, err = pcall(org_update, self)
+    -- Restore unless the update rolled or postponed the emission itself
+    if self._delta == temp_delta then
+        self._delta = real_delta
+    end
+    if not ok then
+        error(err, 0)
+    end
+end
+
+--- Advances the active emission's weather FX to where a 10x clock would have it, so the sky
+--- builds up at vanilla pace while the game clock runs at 1x
+local function sync_emission_wfx()
+    local rt = rt_emission
+    if not rt then return end
+    if not (rt.mgr and rt.mgr.started) then
+        rt_emission = nil
+        return
+    end
+    local tg = time_global()
+    if tg < last_wfx_sync + WFX_SYNC_MS then return end
+    last_wfx_sync = tg
+
+    pcall(function()
+        if not (level.is_wfx_playing and level.is_wfx_playing()) then
+            rt.wfx_v0 = nil
+            return
+        end
+        local name = level.get_weather()
+        if type(name) ~= "string" or not name:find("^fx_") then return end
+        local v = level.get_wfx_time()
+        local r = rt_elapsed(rt)
+        if not rt.wfx_v0 or rt.wfx_name ~= name then
+            rt.wfx_v0, rt.wfx_r0, rt.wfx_dir, rt.wfx_name = v, r, nil, name
+            return
+        end
+        -- get_wfx_time()'s direction (time left or time played) is read from the engine, not assumed
+        if not rt.wfx_dir then
+            if math.abs(v - rt.wfx_v0) < 0.05 then return end
+            rt.wfx_dir = (v < rt.wfx_v0) and -1 or 1
+        end
+        local target = rt.wfx_v0 + rt.wfx_dir * (r - rt.wfx_r0) * rt.tf
+        if target > 1 and math.abs(v - target) > 1 then
+            level.start_weather_fx_from_time(name, target)
+        end
+    end)
+end
+
 --- Installs A-Life hooks for squad movement idle timers, smart terrain respawn timers, emission roll scaling, and item booster tracking
 local function install_alife_hooks()
     if alife_hooks_installed then return end
@@ -826,6 +972,10 @@ local function install_alife_hooks()
 
         -- Wrap CSurgeManager.start so a naturally triggered emission at 1:1 time_factor aligns inited_time to now
         -- and is never falsely skipped by `diff_sec + 6 > self.surge_time` after radio/pre-surge warnings play
+        -- The factor the surge script runs emissions at (its `surge_time_factor` local, 10 in GAMMA)
+        local surge_event_tf = get_upvalue_by_name(surge_manager.CSurgeManager.start, "surge_time_factor")
+            or EMISSION_TF_FALLBACK
+
         if surge_manager.CSurgeManager.start then
             local org_surge_start = surge_manager.CSurgeManager.start
             surge_manager.CSurgeManager.start = function(self, manual)
@@ -833,9 +983,32 @@ local function install_alife_hooks()
                     if game and game.get_game_time then
                         self.inited_time = game.get_game_time()
                     end
-                    return org_surge_start(self, true)
+                    local res = org_surge_start(self, true)
+                    if self.started and realtime_emissions_on() then
+                        begin_realtime_emission(self, surge_event_tf, true)
+                    end
+                    return res
                 end
                 return org_surge_start(self, manual)
+            end
+        end
+
+        -- Wrap CSurgeManager.update: real-time pacing while an emission runs, vanilla-paced
+        -- pre-emission sounds while one is pending
+        if surge_manager.CSurgeManager.update then
+            local org_surge_update = surge_manager.CSurgeManager.update
+            surge_manager.CSurgeManager.update = function(self)
+                if not (self._state_loaded and rtz_mcm.get_config("enabled")) then
+                    return org_surge_update(self)
+                end
+                if self.started and realtime_emissions_on() then
+                    return surge_update_realtime(self, org_surge_update, surge_event_tf)
+                end
+                end_realtime_emission(self)
+                if not self.started then
+                    return surge_update_presurge(self, org_surge_update)
+                end
+                return org_surge_update(self)
             end
         end
 
@@ -844,6 +1017,7 @@ local function install_alife_hooks()
         if surge_manager.CSurgeManager.end_surge then
             local org_end_surge = surge_manager.CSurgeManager.end_surge
             surge_manager.CSurgeManager.end_surge = function(self, manual)
+                end_realtime_emission(self)
                 org_end_surge(self, manual)
                 if rtz_mcm.get_config("enabled") then
                     pcall(function()
@@ -878,6 +1052,11 @@ local function install_alife_hooks()
             end
         end
 
+        -- Psi-storm timers already divide game seconds by the live factor, so at 1x they run in real
+        -- seconds on their own: only the clock factor and the weather FX need pacing
+        local psi_event_tf = get_upvalue_by_name(psi_storm_manager.CPsiStormManager.start, "surge_time_factor")
+            or EMISSION_TF_FALLBACK
+
         if psi_storm_manager.CPsiStormManager.start then
             local org_psi_start = psi_storm_manager.CPsiStormManager.start
             psi_storm_manager.CPsiStormManager.start = function(self, manual)
@@ -885,9 +1064,33 @@ local function install_alife_hooks()
                     if game and game.get_game_time then
                         self.inited_time = game.get_game_time()
                     end
-                    return org_psi_start(self, true)
+                    local res = org_psi_start(self, true)
+                    if self.started and realtime_emissions_on() then
+                        begin_realtime_emission(self, psi_event_tf, false)
+                    end
+                    return res
                 end
                 return org_psi_start(self, manual)
+            end
+        end
+
+        if psi_storm_manager.CPsiStormManager.update then
+            local org_psi_update = psi_storm_manager.CPsiStormManager.update
+            psi_storm_manager.CPsiStormManager.update = function(self)
+                if not (self.started and self._state_loaded and realtime_emissions_on()) then
+                    end_realtime_emission(self)
+                    return org_psi_update(self)
+                end
+                if not (rt_emission and rt_emission.mgr == self) then
+                    begin_realtime_emission(self, psi_event_tf, false)
+                end
+                local res = org_psi_update(self)
+                if self.started then
+                    reassert_time_factor()
+                else
+                    end_realtime_emission(self)
+                end
+                return res
             end
         end
 
@@ -895,6 +1098,7 @@ local function install_alife_hooks()
         if psi_storm_manager.CPsiStormManager.finish then
             local org_psi_finish = psi_storm_manager.CPsiStormManager.finish
             psi_storm_manager.CPsiStormManager.finish = function(self, manual)
+                end_realtime_emission(self)
                 org_psi_finish(self, manual)
                 if rtz_mcm.get_config("enabled") then
                     pcall(function()
@@ -1080,6 +1284,7 @@ end
 function update()
     local tg = time_global()
     enforce_time_factor()
+    sync_emission_wfx()
     update_boosters_and_effects(tg)
     update_vanilla_hunger_drain(tg)
 

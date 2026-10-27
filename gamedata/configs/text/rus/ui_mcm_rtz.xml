@@ -111,6 +111,13 @@
 	<string id="rtz_emiss_2_4d">
 		<text>2-4 дня (48-96 часов)</text>
 	</string>
+	<string id="ui_mcm_rtz_realtime_emissions">
+		<text>Выбросы в реальном времени</text>
+	</string>
+	<string id="ui_mcm_rtz_realtime_emissions_desc">
+		<text>Выбросы и пси-штормы идут с той же длительностью, что и в оригинале, но игровые часы не ускоряются в 10 раз и остаются синхронизированы с реальным временем. Небо выброса развивается с обычной скоростью. Отключите, чтобы вернуть оригинальный выброс с ускорением времени.</text>
+	</string>
+
 	<string id="ui_mcm_rtz_fix_boosters_and_effects">
 		<text>Исправление лечения 1:1 и тряски камеры</text>
 	</string>

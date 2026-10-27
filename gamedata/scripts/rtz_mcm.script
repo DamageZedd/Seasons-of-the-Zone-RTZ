@@ -12,6 +12,7 @@ local defaults = {
     ["vanilla_vitals_alife_scale"] = true,
     ["vitals_mode"]                = 0,
     ["emission_frequency_mode"]    = 0,
+    ["realtime_emissions"]         = true,
     ["fix_boosters_and_effects"]   = true,
     ["enable_real_weather"]        = true,
     ["weather_sync_interval"]      = 5,
@@ -68,6 +69,7 @@ function on_mcm_load()
                 { 3, "rtz_emiss_1_2d" },
                 { 4, "rtz_emiss_2_4d" },
             }},
+            { id = "realtime_emissions", type = "check", val = 1, def = defaults["realtime_emissions"] },
             { id = "fix_boosters_and_effects", type = "check", val = 1, def = defaults["fix_boosters_and_effects"] },
 
             -- 2. Live Real-World Weather

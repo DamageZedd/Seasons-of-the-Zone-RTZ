@@ -11,7 +11,8 @@ local cached_rtz_ini = nil
 local cached_sotz_ini = nil
 
 local function printf_rtz(fmt, ...)
-    printf("[RTZ Weather] " .. fmt, ...)
+    local ok, msg = pcall(string.format, fmt, ...)
+    printf("[RTZ Weather] %s", ok and msg or fmt)
 end
 
 local function get_inis()

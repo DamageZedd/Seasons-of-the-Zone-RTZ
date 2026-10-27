@@ -20,7 +20,8 @@ local last_campfire_tick = 0
 local CAMPFIRE_TICK_MS = 1500
 
 local function printf_rtz(fmt, ...)
-    printf("[RTZ Rest] " .. fmt, ...)
+    local ok, msg = pcall(string.format, fmt, ...)
+    printf("[RTZ Rest] %s", ok and msg or fmt)
 end
 
 --- Safely reads the actor's current fatigue (0 .. 10000)
