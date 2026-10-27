@@ -911,7 +911,7 @@ end
 --- builds up at vanilla pace while the game clock runs at 1x
 local function sync_emission_wfx()
     local rt = rt_emission
-    if not rt then return end
+    if not rt or rt.wfx_failed then return end
     if not (rt.mgr and rt.mgr.started) then
         rt_emission = nil
         return
@@ -940,7 +940,16 @@ local function sync_emission_wfx()
         end
         local target = rt.wfx_v0 + rt.wfx_dir * (r - rt.wfx_r0) * rt.tf
         if target > 1 and math.abs(v - target) > 1 then
+            -- The engine refuses to start a weather FX while one plays, so stop and restart it in the
+            -- same tick: no frame renders in between, and the restart places the sky at `target`
+            level.stop_weather_fx()
             level.start_weather_fx_from_time(name, target)
+            if not level.is_wfx_playing() then
+                -- Restart refused: put the effect back and stop pacing it rather than lose the sky
+                level.set_weather_fx(name)
+                rt.wfx_failed = true
+                printf_rtz("Could not advance weather FX %s; leaving it at normal speed.", name)
+            end
         end
     end)
 end
