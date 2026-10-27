@@ -9,6 +9,10 @@
 - **Changing the place to another time zone** moves the game clock once on the next load: forward to the new time, or, if the new place is up to 4 hours behind, the clock is slowed until it matches.
 - **After updating, run `setup_rtz.bat` once more** so `play.bat` uses the new fetcher.
 
+### Medication Dizziness Wears Off at Vanilla Speed
+- **Problem**: GAMMA's Yadulin, Akvatab and tetanus shot add alcohol, which the engine shows as the drunk sway, and alcohol wears off per game second. At 1:1 time a Yadulin's sway lasted ~14 real minutes instead of vanilla's ~2.4. RTZ's compensation never ran: it read `db.actor.alcohol`, which this engine doesn't have.
+- **Fix**: RTZ now applies the missing decay through the actor's condition (`ChangeAlcohol`), which the engine clamps at zero, so alcohol clears at vanilla's real-time speed (part of **1:1 Medkit Healing & Anomaly Shake Fix** in MCM).
+
 ---
 
 ## [1.0.6] - 2026-10-27

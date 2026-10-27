@@ -461,8 +461,15 @@ local function update_boosters_and_effects(tg)
             if (db.actor.psy_health or 1.0) < 1.0 and db.actor.change_psy_health then
                 db.actor:change_psy_health(cached_psy_health_v * missing_tf * dt_real)
             end
-            if (db.actor.alcohol or 0) > 0 and db.actor.ChangeAlcohol then
-                db.actor:ChangeAlcohol(cached_alcohol_v * missing_tf * dt_real)
+            -- Alcohol (the drunk sway; GAMMA's Yadulin, Akvatab and tetanus shot add it) decays per game
+            -- second. Its level can't be read from Lua, but ChangeAlcohol lives on the actor's condition and
+            -- the engine clamps it at 0, so the missing decay is applied every tick
+            if cached_alcohol_v < 0 then
+                local actor = db.actor.cast_Actor and db.actor:cast_Actor()
+                local cond = actor and actor.conditions and actor:conditions()
+                if cond and cond.ChangeAlcohol then
+                    cond:ChangeAlcohol(cached_alcohol_v * missing_tf * dt_real)
+                end
             end
             if (db.actor.bleeding or 0) > 0 then
                 db.actor.bleeding = cached_wound_incarnation_v * missing_tf * dt_real
