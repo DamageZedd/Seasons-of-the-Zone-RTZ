@@ -840,7 +840,7 @@ local function begin_realtime_emission(mgr, event_tf, fake_inited)
 end
 
 local function end_realtime_emission(mgr)
-    if rt_emission and rt_emission.mgr == mgr then
+    if rt_emission and rawequal(rt_emission.mgr, mgr) then
         rt_emission = nil
     end
 end
@@ -855,7 +855,7 @@ end
 
 --- Runs a started surge's update with its timers paced from real time
 local function surge_update_realtime(self, org_update, event_tf)
-    if not (rt_emission and rt_emission.mgr == self) then
+    if not (rt_emission and rawequal(rt_emission.mgr, self)) then
         begin_realtime_emission(self, event_tf, true)
     end
     local rt = rt_emission
@@ -1081,7 +1081,7 @@ local function install_alife_hooks()
                     end_realtime_emission(self)
                     return org_psi_update(self)
                 end
-                if not (rt_emission and rt_emission.mgr == self) then
+                if not (rt_emission and rawequal(rt_emission.mgr, self)) then
                     begin_realtime_emission(self, psi_event_tf, false)
                 end
                 local res = org_psi_update(self)
