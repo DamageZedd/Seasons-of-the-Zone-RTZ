@@ -55,7 +55,7 @@
 		<text>Preserve Vanilla Vitals &amp; A-Life Pacing (6x)</text>
 	</string>
 	<string id="ui_mcm_rtz_vanilla_vitals_alife_scale_desc">
-		<text>Ensures Sleep, A-Life squad movement/idle timers, Smart Terrain respawns (Vanilla &amp; ZCP), and Emission intervals continue to progress at the exact same real-world rate as vanilla Anomaly (time factor 6.0) even while the world clock runs at 1:1 real time.</text>
+		<text>Ensures Sleep, A-Life squad movement/idle timers, Smart Terrain respawns (Vanilla &amp; ZCP), trader restocks, and Emission intervals continue to progress at the exact same real-world rate as vanilla Anomaly (time factor 6.0) even while the world clock runs at 1:1 real time.</text>
 	</string>
 	<string id="ui_mcm_rtz_vitals_mode">
 		<text>Hunger &amp; Thirst Mode</text>

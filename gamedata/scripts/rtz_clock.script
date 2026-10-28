@@ -1229,6 +1229,23 @@ local function install_alife_hooks()
         end
     end
 
+    -- Trader restocks: trade_manager and every trader_autoinject copy (glowsticks, campfires, weapon
+    -- packs, DAO, ...) wait `get_eco_factor("restock")` hours, 24 by default, of GAME time. At 1:1 that is
+    -- 24 real hours instead of vanilla's 4, so the interval is scaled like the other A-Life timers.
+    -- Wrapping this one function covers all of them, and whatever else already wraps it.
+    if game_difficulties and game_difficulties.get_eco_factor and not game_difficulties.__rtz_restock_hooked then
+        local org_get_eco_factor = game_difficulties.get_eco_factor
+        game_difficulties.get_eco_factor = function(key, ...)
+            local val = org_get_eco_factor(key, ...)
+            if key == "restock" and type(val) == "number" and val > 0 and rtz_mcm.get_config("enabled") then
+                return val * get_target_scale_ratio()
+            end
+            return val
+        end
+        game_difficulties.__rtz_restock_hooked = true
+        printf_rtz("Hooked trader restock interval for vanilla real-time pacing.")
+    end
+
     -- Hook ZCP (Survival Mode Remade / smr_pop.smart_can_respawn) if present
     if smr_pop and smr_pop.smart_can_respawn then
         local org_smart_can_respawn = smr_pop.smart_can_respawn

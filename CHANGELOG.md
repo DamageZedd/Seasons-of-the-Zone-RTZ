@@ -9,6 +9,10 @@
 - **Changing the place to another time zone** moves the game clock once on the next load: forward to the new time, or, if the new place is up to 4 hours behind, the clock is slowed until it matches.
 - **After updating, run `setup_rtz.bat` once more** so `play.bat` uses the new fetcher.
 
+### Traders Restock at Vanilla Speed
+- **Problem**: Traders wait 24 game hours between restocks (`get_eco_factor("restock")`, compared against game time by `trade_manager` and every `trader_autoinject` copy: glowsticks, campfires, weapon packs, DAO, furniture...). At 1:1 time that is 24 real hours instead of vanilla's 4.
+- **Fix**: RTZ wraps `game_difficulties.get_eco_factor` so the restock interval is scaled by the time ratio like the other A-Life timers: traders restock every 4 real hours again, at the 24-hour setting. Part of **Preserve Vanilla Vitals & A-Life Pacing (6x)** in MCM; scripts that already wrap the same function keep working.
+
 ### Medication Dizziness Wears Off at Vanilla Speed
 - **Problem**: GAMMA's Yadulin, Akvatab and tetanus shot add alcohol, which the engine shows as the drunk sway, and alcohol wears off per game second. At 1:1 time a Yadulin's sway lasted ~14 real minutes instead of vanilla's ~2.4. RTZ's compensation never ran: it read `db.actor.alcohol`, which this engine doesn't have.
 - **Fix**: RTZ now applies the missing decay through the actor's condition (`ChangeAlcohol`), which the engine clamps at zero, so alcohol clears at vanilla's real-time speed (part of **1:1 Medkit Healing & Anomaly Shake Fix** in MCM).
