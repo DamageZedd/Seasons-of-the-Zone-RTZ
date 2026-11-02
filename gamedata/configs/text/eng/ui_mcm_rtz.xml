@@ -33,6 +33,12 @@
 	<string id="ui_mcm_rtz_use_place_time_desc">
 		<text>The game clock and the hour-by-hour weather follow the local time of the place set in Seasons of the Zone's configure.bat, not your PC's clock. The place's time zone is refreshed on every play.bat launch. Turn off to follow your PC's clock.</text>
 	</string>
+	<string id="ui_mcm_rtz_absorb_time_skips">
+		<text>Ignore Time Skips From Other Mods</text>
+	</string>
+	<string id="ui_mcm_rtz_absorb_time_skips_desc">
+		<text>While Sync Clock is on, time skips from other mods (fast travel, guides, backpack travel, campfires, books, Soulslike's dream, DAO's time distortion) don't move the clock: it stays on real time. Without this, the clock runs ahead and RTZ slows time to 0.1x until real time catches up. Trips take no game time. Turn off to let those mods skip the clock again.</text>
+	</string>
 	<string id="ui_mcm_rtz_lock_time_factor">
 		<text>Enforce 1:1 Real-Time Speed</text>
 	</string>

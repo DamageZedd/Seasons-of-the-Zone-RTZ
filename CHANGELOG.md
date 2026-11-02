@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.8] - 2026-11-01
+
+### Time Skips From Other Mods No Longer Throw the Clock Off (Issue #4)
+- **Problem**: Fair Fast Travel, the guides and backpack travel, Extra Level Transitions, The Long Road Ahead, books, placeable campfires, quest scenes, Dynamic Anomalies' time distortion and Soulslike's dream all skip time with `level.change_game_time`. With the clock on the wall clock RTZ can't take a skip back: up to 4 hours ahead it slowed the whole Zone to 0.1x until real time caught up (a 2-hour trip: about 2h13m of slow Zone), and further ahead it waited for the next load and then jumped to the same hour the next day, costing about a day.
+- **Fix**: While RTZ and Sync Clock are on, other mods' time skips are absorbed: they are logged (`[RTZ Clock] Absorbed a time skip of ...`) and the clock stays on real time. RTZ's own syncs still reach the engine. One wrapper on `level.change_game_time` sees every caller, since none of the scripts keeps its own reference to it. It is safe across script reloads, and the debug menus (`edt_debug_tools`, `debug_cmd_list`) always pass through.
+- **Emissions**: Fair Fast Travel and others mark the surge and psi-storm managers `time_forwarded` after their skip, which pushes an emission due within the hour three hours back. The skip moved nothing, so RTZ clears the flag (per manager, from RTZ's update and from each manager's own update wrapper, whichever runs first). A running emission is left alone.
+- New MCM option **Ignore Time Skips From Other Mods** (on by default; needs Sync Clock). Turn it off to let those mods skip the clock again.
+- **Trade-offs**: trips take no game time (their other costs, such as money, remain; The Long Road Ahead's arrival summary shows a near-zero trip time), Books Pass Time items (journal, cards) are still used up although the hours they skip are ignored, DAO's time distortion and Soulslike's dream lose their skip, and a quest scene that sets an hour plays at the current time. None of the scripts checked waits on game time after its skip, so nothing hangs. A save already more than 4 hours ahead still jumps at its next load.
+- Reported with a patch by devinhorowitz; this version adds the MCM option, the per-manager flag handling and reload-safe installation.
+
+---
+
 ## [1.0.7] - 2026-10-27
 
 ### Clock & Weather Follow Your Seasons of the Zone Location
