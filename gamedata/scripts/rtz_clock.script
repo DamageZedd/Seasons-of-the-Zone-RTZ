@@ -7,6 +7,8 @@ local VANILLA_TIME_FACTOR = 6.0
 
 local last_drift_check = 0
 local DRIFT_CHECK_MS = 20000 -- Check drift every 20s
+local DRIFT_DEADBAND_SEC = 2  -- Within this, the clock counts as on time; past it, the time factor steers it back
+local DRIFT_JUMP_SEC = 600    -- Further behind than this, jump the whole minutes instead of steering
 
 local last_vitals_tick = 0
 local VITALS_TICK_MS = 1000 -- Compensate C++ hunger every 1s
@@ -1447,16 +1449,25 @@ function sync_to_real_time(force)
     is_synced = true
 end
 
---- Time factor RTZ wants right now: the configured value, or 0.1 while the game clock is ahead of the wall clock
+--- Time factor RTZ wants right now: the configured value, steered to hold the game clock on the wall clock
 function get_desired_time_factor()
     local target_tf = rtz_mcm.get_config("time_factor_val") or 1.0
 
-    -- If clock sync is enabled and game clock is 1.5 mins to 4 hours ahead of wall clock (e.g. post-emission),
-    -- slow the game clock to 0.1x so the wall clock catches up without jumping a full day forward
     if rtz_mcm.get_config("sync_clock") then
         local _, _, signed_diff = get_clock_diff_seconds()
         if signed_diff and signed_diff < -90 and signed_diff >= -14400 then
+            -- 1.5 mins to 4 hours ahead (e.g. post-emission): slow to 0.1x so the wall clock catches up
+            -- without jumping a full day forward
             target_tf = math.min(target_tf, 0.1)
+        elseif signed_diff and math.abs(target_tf - 1.0) < 0.01 then
+            -- Menus, loading screens and stutters stop the game clock while the wall clock runs on, so it
+            -- drifts behind the longer you play. Steer small drift out with the time factor rather than a
+            -- jump: up to 3x while behind (30 s behind runs at 1.2x), down to 0.5x while slightly ahead.
+            if signed_diff > DRIFT_DEADBAND_SEC and signed_diff <= 14400 then
+                target_tf = 1.0 + math.min(signed_diff / 150, 2.0)
+            elseif signed_diff < -DRIFT_DEADBAND_SEC then
+                target_tf = math.max(0.5, 1.0 + signed_diff / 180)
+            end
         end
     end
     return target_tf
@@ -1474,7 +1485,7 @@ function enforce_time_factor()
     local target_tf = get_desired_time_factor()
 
     local cur_tf = level.get_time_factor()
-    if math.abs(cur_tf - target_tf) > 0.05 then
+    if math.abs(cur_tf - target_tf) > 0.01 then
         level.set_time_factor(target_tf)
     end
 end
@@ -1508,9 +1519,11 @@ function update()
         -- Drift check: verify if loading/menu pauses or an emission left the clock behind real time
         if rtz_mcm.get_config("enabled") and rtz_mcm.get_config("sync_clock") and not is_emission_or_wfx_active() then
             local _, _, signed_diff = get_clock_diff_seconds()
-            -- Skip while bleeding or irradiated so a long menu pause can't drain a large chunk of health at once
+            -- Smaller drift is steered out by get_desired_time_factor(). Skip while bleeding or irradiated so a
+            -- long menu pause can't drain a large chunk of health at once; the steering catches up meanwhile.
             local hurt = db.actor and ((db.actor.bleeding or 0) > 0 or (db.actor.radiation or 0) > 0)
-            if signed_diff and signed_diff >= 90 and signed_diff <= 14400 and not hurt then
+            if signed_diff and signed_diff > DRIFT_JUMP_SEC and signed_diff <= 14400 and not hurt then
+                printf_rtz("Game clock is %d mins behind wall clock; jumping forward.", math.floor(signed_diff / 60))
                 change_game_time_guarded(0, 0, math.floor(signed_diff / 60))
             end
         end

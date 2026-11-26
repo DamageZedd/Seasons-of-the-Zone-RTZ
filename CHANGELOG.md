@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.9] - 2026-11-25
+
+### The Clock No Longer Drifts Behind the Longer You Play
+- **Problem**: Loading screens, the pause menu and stutters stop the game clock while the wall clock runs on. RTZ's drift check only corrected once the clock was 90 seconds behind, in whole-minute jumps, so it usually sat 1-2 minutes behind. It also skipped the correction entirely while you were bleeding or had any radiation, which in GAMMA is most of the time, so the clock kept slipping further behind all session.
+- **Fix**: Small drift is now steered out with the time factor instead of a jump: up to 3x while behind (30 seconds behind runs at 1.2x), down to 0.5x while up to 90 seconds ahead. Nothing jumps, so it also works while bleeding or irradiated. Only a gap of more than 10 minutes (a long pause) is jumped, and that is logged (`[RTZ Clock] Game clock is N mins behind wall clock; jumping forward.`). The time factor is applied in 0.01 steps instead of 0.05, so the clock settles instead of overshooting.
+- Hunger, boosters and A-Life pacing stay at vanilla speed during the brief speed-ups: RTZ's compensation already follows the current time factor.
+- In a simulated hour with a 20-second pause every 5 minutes, the average drift went from 59.5 s behind (148 s and growing while irradiated) to 10 s.
+
+---
+
 ## [1.0.8] - 2026-11-01
 
 ### Time Skips From Other Mods No Longer Throw the Clock Off (Issue #4)
